@@ -117,6 +117,10 @@ an HTTPS address with its own key. Details: [Hermes API server](https://hermes-a
 
 ### 3. The app
 
+The quickest way is the signed APK from the [Releases](https://github.com/famfamfam/hermes-miniapps/releases) page: open it
+on the phone (allow installs from your browser or file manager) or `adb install -r` it. Every release is signed with the
+project's one key, so each can be installed over the previous one. To build it yourself:
+
 ```sh
 cd client
 flutter pub get

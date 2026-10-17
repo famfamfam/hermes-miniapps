@@ -117,6 +117,8 @@ Hermes のゲートウェイを再起動してください。キーは loopback 
 
 ### 3. アプリ
 
+いちばん簡単なのは、[Releases](https://github.com/famfamfam/hermes-miniapps/releases) ページの署名済み APK を使う方法です。スマートフォンで開くか（ブラウザやファイル管理アプリからのインストールを許可してください）、`adb install -r` でインストールします。リリースはすべてプロジェクトの同じ鍵で署名されているため、次のリリースは前のものに上書きインストールできます。自分でビルドする場合:
+
 ```sh
 cd client
 flutter pub get

@@ -122,6 +122,8 @@ túnel, una VPN o una dirección HTTPS con su propia clave. Detalles: [Hermes AP
 
 ### 3. La aplicación
 
+La forma más rápida es el APK firmado de la página [Releases](https://github.com/famfamfam/hermes-miniapps/releases): ábralo en el teléfono (permita instalar desde el navegador o el gestor de archivos) o instálelo con `adb install -r`. Cada versión se firma con la misma clave del proyecto, así que cada una se instala sobre la anterior. Para compilarlo usted mismo:
+
 ```sh
 cd client
 flutter pub get

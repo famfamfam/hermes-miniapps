@@ -113,6 +113,8 @@ Hermes 게이트웨이를 재시작하세요. 키는 loopback에서도 필수이
 
 ### 3. 앱
 
+가장 빠른 방법은 [Releases](https://github.com/famfamfam/hermes-miniapps/releases) 페이지에서 서명된 APK를 받는 것입니다. 휴대폰에서 열거나(브라우저나 파일 관리자에서 앱 설치를 허용해야 합니다) `adb install -r` 로 설치하세요. 모든 릴리스는 프로젝트의 같은 키로 서명되므로 다음 버전을 이전 버전 위에 그대로 설치할 수 있습니다. 직접 빌드하려면:
+
 ```sh
 cd client
 flutter pub get

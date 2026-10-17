@@ -109,6 +109,8 @@ API_SERVER_PORT=8642
 
 ### 3. 应用
 
+最快的方式是从 [Releases](https://github.com/famfamfam/hermes-miniapps/releases) 页面下载已签名的 APK：在手机上打开它（允许浏览器或文件管理器安装应用），或用 `adb install -r` 安装。每个发布版都用项目的同一把密钥签名，因此后一个版本可以直接覆盖安装前一个。自己构建的方法：
+
 ```sh
 cd client
 flutter pub get

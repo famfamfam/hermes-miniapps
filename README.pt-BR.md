@@ -120,6 +120,8 @@ ou um endereço HTTPS com chave própria. Detalhes: [Hermes API server](https://
 
 ### 3. O aplicativo
 
+O jeito mais rápido é o APK assinado da página [Releases](https://github.com/famfamfam/hermes-miniapps/releases): abra-o no telefone (permita instalar a partir do navegador ou do gerenciador de arquivos) ou use `adb install -r`. Cada versão é assinada com a mesma chave do projeto, então cada uma instala por cima da anterior. Para compilar você mesmo:
+
 ```sh
 cd client
 flutter pub get
