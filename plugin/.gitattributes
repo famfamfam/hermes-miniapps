@@ -1,0 +1,4 @@
+# The installer renders these into files for a Linux host (systemd units, pip constraints): keep LF in every checkout.
+*.tmpl text eol=lf
+constraints.txt text eol=lf
+tests/golden/** text eol=lf

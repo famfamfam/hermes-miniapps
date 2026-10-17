@@ -1,0 +1,153 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  plugin:
+    name: Plugin tests (Python 3.12)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+
+      # Node is needed only so the authoring tests run instead of skipping; they build the
+      # starter template with the real toolchain (plugin/tests/test_authoring.py).
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: templates/starter-app/package-lock.json
+
+      # The runtime dependencies (including cryptography, used for approval signatures) come from
+      # plugin/pyproject.toml, so the list is not copied here. pytest is a test-only tool.
+      - name: Install plugin dependencies
+        run: |
+          python -c "import tomllib; print('\n'.join(tomllib.load(open('plugin/pyproject.toml', 'rb'))['project']['dependencies']))" > "$RUNNER_TEMP/plugin-requirements.txt"
+          python -m pip install -r "$RUNNER_TEMP/plugin-requirements.txt" pytest
+
+      - name: Install the authoring template toolchain
+        working-directory: templates/starter-app
+        run: npm ci --ignore-scripts
+
+      - name: Run tests
+        working-directory: plugin
+        run: python -m pytest -q
+
+  flutter:
+    name: Flutter ${{ matrix.flutter }} / ${{ matrix.package }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.44.0: the toolchain used to build the phone client. 3.41.6: a release at the lower
+        # bound the packages declare (flutter >=3.41.0), which is what they were developed on.
+        flutter: ["3.41.6", "3.44.0"]
+        package:
+          - packages/hermes_surfaces
+          - packages/hermes_surfaces_bridge
+          - packages/hermes_surfaces/example
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: ${{ matrix.flutter }}
+          cache: true
+
+      # Not --enforce-lockfile: the committed lock files were produced on one SDK and the matrix
+      # uses two. The example's local path packages are resolved from this checkout.
+      - name: Resolve dependencies
+        working-directory: ${{ matrix.package }}
+        run: flutter pub get
+
+      - name: Analyze
+        working-directory: ${{ matrix.package }}
+        run: flutter analyze
+
+      - name: Test
+        working-directory: ${{ matrix.package }}
+        run: flutter test
+
+  client:
+    name: Android app
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: "3.44.0"
+          cache: true
+
+      - name: Resolve dependencies
+        working-directory: client
+        run: flutter pub get
+
+      - name: Analyze
+        working-directory: client
+        run: flutter analyze
+
+      - name: Test
+        working-directory: client
+        run: flutter test
+
+      # Without a key.properties the release build is signed with the runner's debug key: it installs,
+      # but a later CI build has another key. Sign with your own key to ship updates.
+      # Two ABIs, like the release workflow and the phones this app targets: a build of every ABI was cut
+      # off by the runner after 12 minutes on the first run.
+      - name: Build APK
+        working-directory: client
+        run: flutter build apk --release --target-platform android-arm,android-arm64
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: hermes-apk
+          path: client/build/app/outputs/flutter-apk/app-release.apk
+
+  web:
+    name: Web template ${{ matrix.template }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        template: [react-app, starter-app, zhkh-app]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: templates/${{ matrix.template }}/package-lock.json
+
+      # The mobile SDK (packages/mobile-sdk) has no lock file and no dependencies of its own; its
+      # TypeScript sources are type-checked and bundled through every template build below
+      # (tsconfig includes ../../packages/mobile-sdk/src).
+      - name: Install
+        working-directory: templates/${{ matrix.template }}
+        run: npm ci --ignore-scripts
+
+      - name: Typecheck and build
+        working-directory: templates/${{ matrix.template }}
+        run: npm run build

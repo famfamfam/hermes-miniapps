@@ -1,0 +1,81 @@
+{
+  "queries": {
+    "due_total": {
+      "sql": "SELECT COALESCE(CAST(ROUND(SUM(amount) * 100) AS INTEGER), 0) FROM receipts WHERE COALESCE(status, 'new') <> 'paid'",
+      "shape": "value"
+    },
+    "due_count": {
+      "sql": "SELECT COUNT(*) FROM receipts WHERE COALESCE(status, 'new') <> 'paid'",
+      "shape": "value"
+    },
+    "overdue_count": {
+      "sql": "SELECT COUNT(*) FROM receipts WHERE status = 'overdue'",
+      "shape": "value"
+    },
+    "latest_period": {
+      "sql": "SELECT MAX(period) FROM receipts",
+      "shape": "value"
+    },
+    "latest_total": {
+      "sql": "SELECT COALESCE(CAST(ROUND(SUM(amount) * 100) AS INTEGER), 0) FROM receipts WHERE period = (SELECT MAX(period) FROM receipts)",
+      "shape": "value"
+    },
+    "monthly_totals": {
+      "sql": "SELECT period AS month, CAST(ROUND(COALESCE(SUM(amount), 0) * 100) AS INTEGER) AS total FROM receipts WHERE period IS NOT NULL GROUP BY period ORDER BY period DESC LIMIT 12",
+      "shape": "rows",
+      "maxRows": 12
+    },
+    "by_address": {
+      "sql": "SELECT c.id AS id, CASE WHEN c.address GLOB '[0-9][0-9][0-9][0-9][0-9][0-9][, ]*' THEN trim(substr(c.address, instr(c.address, ',') + 1)) ELSE c.address END AS name, c.alias AS alias, COUNT(r.id) AS receipts, CAST(ROUND(COALESCE(SUM(CASE WHEN COALESCE(r.status, 'new') <> 'paid' THEN r.amount END), 0) * 100) AS INTEGER) AS due FROM addresses a JOIN addresses c ON c.id = COALESCE(a.canonical_id, a.id) LEFT JOIN receipts r ON r.address_id = a.id GROUP BY c.id ORDER BY due DESC, name",
+      "shape": "rows",
+      "maxRows": 50
+    },
+    "receipts": {
+      "sql": "SELECT r.id, CASE WHEN c.address GLOB '[0-9][0-9][0-9][0-9][0-9][0-9][, ]*' THEN trim(substr(c.address, instr(c.address, ',') + 1)) ELSE c.address END AS address, p.name AS provider, s.name AS service, r.period, CAST(ROUND(r.amount * 100) AS INTEGER) AS amount, COALESCE(r.status, 'new') AS status FROM receipts r JOIN addresses a ON a.id = r.address_id JOIN addresses c ON c.id = COALESCE(a.canonical_id, a.id) LEFT JOIN providers p ON p.id = r.provider_id LEFT JOIN service_types s ON s.id = r.service_type_id WHERE (:status IS NULL OR COALESCE(r.status, 'new') = :status) ORDER BY r.period DESC, r.id DESC",
+      "params": {
+        "status": {
+          "type": "enum",
+          "values": [
+            "new",
+            "overdue",
+            "paid"
+          ],
+          "nullable": true
+        }
+      },
+      "shape": "rows",
+      "maxRows": 200
+    },
+    "receipt": {
+      "sql": "SELECT r.id, CASE WHEN json_valid(r.raw_text) THEN json_extract(r.raw_text, '$.payer_name') END AS payer, a.address AS address, p.name AS provider, s.name AS service, r.period, r.receipt_date, r.account_number, CAST(ROUND(r.amount * 100) AS INTEGER) AS amount, CAST(ROUND(r.amount_paid * 100) AS INTEGER) AS amount_paid, COALESCE(r.status, 'new') AS status, CASE WHEN COALESCE(r.file_path, '') = '' THEN 0 ELSE 1 END AS has_file FROM receipts r JOIN addresses a ON a.id = r.address_id LEFT JOIN providers p ON p.id = r.provider_id LEFT JOIN service_types s ON s.id = r.service_type_id WHERE r.id = :id",
+      "params": {
+        "id": {
+          "type": "integer"
+        }
+      },
+      "shape": "row"
+    },
+    "receipt_services": {
+      "sql": "WITH src AS (SELECT raw_text FROM receipts WHERE id = :id AND json_valid(raw_text)) SELECT json_extract(j.value, '$.name') AS name, CAST(ROUND(CAST(json_extract(j.value, '$.amount') AS REAL) * 100) AS INTEGER) AS amount, json_extract(j.value, '$.unit') AS unit, json_extract(j.value, '$.volume') AS volume, json_extract(j.value, '$.tariff') AS tariff FROM src, json_each(src.raw_text, '$.services') j ORDER BY j.rowid",
+      "params": {
+        "id": {
+          "type": "integer"
+        }
+      },
+      "shape": "rows",
+      "maxRows": 50
+    }
+  },
+  "mutations": {},
+  "files": {
+    "receipt_file": {
+      "sql": "SELECT file_path FROM receipts WHERE id = :id",
+      "params": {
+        "id": {
+          "type": "integer"
+        }
+      },
+      "root": "receipts"
+    }
+  }
+}

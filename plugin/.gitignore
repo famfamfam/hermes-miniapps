@@ -1,0 +1,4 @@
+# Packaging output (pip install ./plugin may leave these next to the sources)
+build/
+dist/
+*.egg-info/

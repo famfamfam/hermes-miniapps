@@ -1,0 +1,8 @@
+{
+  "name": "@hermes/mobile-sdk",
+  "version": "0.0.1",
+  "private": true,
+  "description": "React SDK for Hermes mini-apps (Stage 0 spike): query, host state, bridge transport",
+  "main": "src/index.ts",
+  "types": "src/index.ts"
+}

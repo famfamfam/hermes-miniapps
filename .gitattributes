@@ -1,0 +1,5 @@
+# One line ending for everyone: LF in the repository and in every checkout (Windows included), so that scripts, units and
+# tests behave the same on every machine. Windows batch files are the one exception.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf

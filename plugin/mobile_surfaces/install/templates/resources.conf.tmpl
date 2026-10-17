@@ -1,0 +1,6 @@
+# Managed by `python -m mobile_surfaces.install` (installer schema @@SCHEMA@@).
+# Resource ceilings for this unit alone, @@PROFILE@@. A process that exceeds MemoryMax is killed (and
+# restarted), not the other services of the host. Edit the values with `--memory-max` and friends on
+# the next `apply --upgrade`, or add a later drop-in (for example zz-local.conf) to override them.
+[Service]
+@@LIMITS@@

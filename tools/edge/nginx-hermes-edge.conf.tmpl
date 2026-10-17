@@ -1,0 +1,58 @@
+# Public HTTPS edge for the phone: one nginx server block in front of two LOOPBACK services.
+# Replace the three placeholders, put the file into sites-available, symlink it into sites-enabled,
+# run `nginx -t`, then `systemctl reload nginx`.
+#
+#   @PORT@       a free TCP port that is not 443 if something else (e.g. a proxy) already uses 443, e.g. 8443
+#   @PREFIX@     a long random path segment, e.g. `python3 -c "import secrets; print(secrets.token_hex(12))"`.
+#                It is a SECOND secret (scanners hitting the port get the connection closed); the bearer
+#                tokens stay the real access control. Use it as the "Gateway path prefix" `/@PREFIX@/gw`
+#                in the chat client and as `.../@PREFIX@/ms` for the Surfaces URL.
+#   @CERT@/@KEY@ paths of the certificate chain and key (see README.md in this directory).
+#
+# Switch the access off at any time:  rm /etc/nginx/sites-enabled/hermes-edge && systemctl reload nginx
+
+limit_req_zone $binary_remote_addr zone=hermes_edge_req:10m rate=20r/s;
+limit_conn_zone $binary_remote_addr zone=hermes_edge_conn:10m;
+
+server {
+    listen @PORT@ ssl;
+    server_name _;
+
+    ssl_certificate     @CERT@;
+    ssl_certificate_key @KEY@;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_cache shared:hermes_edge_ssl:5m;
+    ssl_session_timeout 1h;
+    server_tokens off;
+
+    client_max_body_size 25m;
+    limit_req zone=hermes_edge_req burst=60 nodelay;
+    limit_conn hermes_edge_conn 20;
+    access_log /var/log/nginx/hermes-edge.access.log;
+
+    # Hermes official Gateway API (chat, streamed answers). Hermes itself still requires its API key.
+    location /@PREFIX@/gw/ {
+        proxy_pass http://127.0.0.1:8642/;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_request_buffering off;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+
+    # Surfaces phone API (apps). Its own bearer is required. The author MCP (8788) is NOT exposed.
+    location /@PREFIX@/ms/ {
+        proxy_pass http://127.0.0.1:8787/;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_buffering off;
+        proxy_read_timeout 120s;
+    }
+
+    # Anything else: close the connection without an answer.
+    location / {
+        return 444;
+    }
+}

@@ -1,0 +1,35 @@
+# Versions the server is developed and tested with (pip install -c constraints.txt ./plugin).
+# The installer passes this file to pip so that two installs of the same checkout get the same
+# dependencies. They match the versions recorded for the reference VPS deployment (FastAPI 0.141.1,
+# uvicorn 0.52.4, MCP 1.30.0, Pydantic 2.13.4, Starlette 1.6.0, AnyIO 4.14.1).
+# Regenerate after a deliberate dependency upgrade and re-run the test suite; Windows-only packages
+# (colorama, pywin32) are left out because the service runs on Linux.
+annotated-doc==0.0.5
+annotated-types==0.7.0
+anyio==4.14.1
+attrs==26.1.0
+certifi==2026.6.17
+click==8.5.0
+cryptography==49.0.0
+fastapi==0.141.1
+h11==0.16.0
+httpcore==1.0.9
+httpx==0.28.1
+httpx-sse==0.4.3
+idna==3.18
+jsonschema==4.26.0
+jsonschema-specifications==2025.9.1
+mcp==1.30.0
+pydantic==2.13.4
+pydantic-core==2.46.4
+pydantic-settings==2.15.0
+pyjwt==2.15.1
+python-dotenv==1.2.3
+python-multipart==0.0.32
+referencing==0.37.0
+rpds-py==2026.9.1
+sse-starlette==3.5.0
+starlette==1.6.0
+typing-extensions==4.16.0
+typing-inspection==0.4.2
+uvicorn==0.52.4

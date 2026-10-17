@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Проверка изоляции</title>
+    <link rel="stylesheet" href="./probe.css" />
+  </head>
+  <body>
+    <h1>S0-3: проверка изоляции</h1>
+    <p class="note">
+      Страница намеренно враждебна: она пытается выйти в сеть всеми каналами. Достоверный признак утечки —
+      любая строка в окне <code>tools/canary.py</code> на компьютере. Ответ страницы вторичен.
+    </p>
+    <label>Адрес canary (host:port)
+      <input id="canary" value="127.0.0.1:10000" autocapitalize="off" autocomplete="off" />
+    </label>
+    <div class="row">
+      <button id="run">Запустить все проверки</button>
+      <button id="flood">Лавина сообщений</button>
+      <button id="freeze">Заморозить JS</button>
+    </div>
+    <p id="summary" role="status"></p>
+    <table id="results"><thead><tr><th>Канал</th><th>Итог</th></tr></thead><tbody></tbody></table>
+    <script src="./probe.js"></script>
+  </body>
+</html>

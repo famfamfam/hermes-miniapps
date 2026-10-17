@@ -1,0 +1,47 @@
+# Managed by `python -m mobile_surfaces.install` (installer schema 1). Changes made here are
+# replaced on upgrade: put local overrides in a drop-in under hermes-surfaces.service.d/ instead.
+#
+# User-scope variant: runs as the installing user, without root. Two listeners with two different bearer
+# tokens: the phone API (read and approve) and the author MCP endpoint (SQL writes, builds), which is
+# bound to loopback only and is meant for Hermes on this host. The tokens are 0600 files of this user; the
+# command line names the files, never the values.
+# The service stops when the last session of the user ends unless lingering is enabled
+# (`loginctl enable-linger`).
+[Unit]
+Description=Hermes Mobile Surfaces server (phone API and author MCP)
+After=network.target
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+Type=simple
+WorkingDirectory=/home/alice/.local/state/hermes-surfaces
+# No ExecStartPre: the service never creates or reseeds apps. Data is created through the MCP tools.
+ExecStart=/home/alice/.local/share/hermes-surfaces/venv/bin/python -I -u -m devserver \
+    --home /home/alice/.local/state/hermes-surfaces \
+    --host 127.0.0.1 --port 8787 \
+    --mcp-host 127.0.0.1 --mcp-port 8788 \
+    --token-file /home/alice/.config/hermes-surfaces/api-token --mcp-token-file /home/alice/.config/hermes-surfaces/mcp-token \
+    --template /home/alice/.local/share/hermes-surfaces/templates/starter-app --sdk /home/alice/.local/share/hermes-surfaces/sdk \
+    --work-dir /home/alice/.local/state/hermes-surfaces/work --build-timeout 150
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+SystemCallArchitectures=native
+StandardOutput=journal
+StandardError=journal
+# Extra sandboxing (--user-sandbox). Needs unprivileged user namespaces; if the unit fails to start with
+# status 226/NAMESPACE, run the installer again without --user-sandbox.
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/alice/.local/state/hermes-surfaces
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+
+[Install]
+WantedBy=default.target

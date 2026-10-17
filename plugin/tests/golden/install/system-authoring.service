@@ -1,0 +1,59 @@
+# Managed by `python -m mobile_surfaces.install` (installer schema 1). Changes made here are
+# replaced on upgrade: put local overrides in a drop-in under hermes-surfaces.service.d/ instead.
+#
+# Two listeners with two different bearer tokens: the phone API (read and approve) and the author MCP
+# endpoint (SQL writes, builds), which is bound to loopback only and is meant for Hermes on this host.
+# Tokens are root-only files handed over as systemd credentials; they are never put on a command line.
+[Unit]
+Description=Hermes Mobile Surfaces server (phone API and author MCP)
+After=network.target
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+Type=simple
+DynamicUser=yes
+StateDirectory=hermes-surfaces
+StateDirectoryMode=0700
+WorkingDirectory=/var/lib/hermes-surfaces
+LoadCredential=api-token:/etc/hermes-surfaces/api-token
+LoadCredential=mcp-token:/etc/hermes-surfaces/mcp-token
+# No ExecStartPre: the service never creates or reseeds apps. Data is created through the MCP tools.
+ExecStart=/opt/hermes-surfaces/venv/bin/python -I -u -m devserver \
+    --home /var/lib/hermes-surfaces \
+    --host 127.0.0.1 --port 8787 \
+    --mcp-host 127.0.0.1 --mcp-port 8788 \
+    --token-file credential:api-token --mcp-token-file credential:mcp-token \
+    --template /opt/hermes-surfaces/templates/starter-app --sdk /opt/hermes-surfaces/sdk \
+    --work-dir /var/lib/hermes-surfaces/work --build-timeout 150
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+# Only loopback traffic is allowed: the service never needs to reach (or be reached from) anything else.
+IPAddressDeny=any
+IPAddressAllow=localhost
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+AmbientCapabilities=
+# MemoryDenyWriteExecute is deliberately not set: Node (V8) used by interface builds needs W+X memory.
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

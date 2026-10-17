@@ -1,0 +1,37 @@
+{
+  "queries": {
+    "bills": {
+      "sql": "SELECT id, supplier, period, amount, status FROM bills WHERE (:status IS NULL OR status = :status) ORDER BY period DESC, id DESC",
+      "params": { "status": { "type": "enum", "values": ["paid", "unpaid"], "nullable": true } },
+      "shape": "rows",
+      "maxRows": 200
+    },
+    "month_total": {
+      "sql": "SELECT COALESCE(SUM(amount), 0) FROM bills WHERE substr(period, 1, 7) = substr(:today, 1, 7)",
+      "shape": "value"
+    },
+    "unpaid_total": {
+      "sql": "SELECT COALESCE(SUM(amount), 0) FROM bills WHERE status = 'unpaid'",
+      "shape": "value"
+    },
+    "unpaid_count": {
+      "sql": "SELECT COUNT(*) FROM bills WHERE status = 'unpaid'",
+      "shape": "value"
+    },
+    "monthly_totals": {
+      "sql": "SELECT substr(period, 1, 7) AS month, SUM(amount) AS total FROM bills GROUP BY month ORDER BY month DESC LIMIT 12",
+      "shape": "rows",
+      "maxRows": 12
+    }
+  },
+  "mutations": {
+    "mark_paid": {
+      "sql": "UPDATE bills SET status = 'paid' WHERE id = :id",
+      "params": { "id": { "type": "integer" } }
+    },
+    "delete_bill": {
+      "sql": "DELETE FROM bills WHERE id = :id",
+      "params": { "id": { "type": "integer" } }
+    }
+  }
+}

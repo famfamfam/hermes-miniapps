@@ -1,0 +1,36 @@
+# Managed by `python -m mobile_surfaces.install` (installer schema @@SCHEMA@@). Changes made here are
+# replaced on upgrade: put local overrides in a drop-in under @@NAME@@.service.d/ instead.
+#
+# User-scope variant: runs as the installing user, without root. Two listeners with two different bearer
+# tokens: the phone API (read and approve) and the author MCP endpoint (SQL writes, builds), which is
+# bound to loopback only and is meant for Hermes on this host. The tokens are 0600 files of this user; the
+# command line names the files, never the values.
+# The service stops when the last session of the user ends unless lingering is enabled
+# (`loginctl enable-linger`).
+@@BIND_NOTE@@
+[Unit]
+Description=Hermes Mobile Surfaces server (phone API and author MCP)
+After=network.target
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+Type=simple
+WorkingDirectory=@@STATE_DIR@@
+@@ENVIRONMENT@@
+# No ExecStartPre: the service never creates or reseeds apps. Data is created through the MCP tools.
+@@EXEC_START@@
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+SystemCallArchitectures=native
+StandardOutput=journal
+StandardError=journal
+@@SANDBOX@@
+
+[Install]
+WantedBy=default.target

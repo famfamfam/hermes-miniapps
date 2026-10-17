@@ -1,0 +1,40 @@
+# Local dev data and secrets (dev token, SQLite files)
+.devhome/
+plugin/.devhome/
+*.db
+*.db-wal
+*.db-shm
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+
+# Node
+node_modules/
+templates/*/dist/
+templates/*/.work/
+
+# Flutter / Android
+.dart_tool/
+.flutter-plugins*
+build/
+*.iml
+.idea/
+local.properties
+.gradle/
+**/android/app/debug/
+**/android/app/profile/
+**/android/app/release/
+
+# Signing keys and their passwords never go into git
+client/signing/
+key.properties
+*.p12
+*.jks
+*.keystore
+*.pfx
+# any copy or renamed copy of the signing properties (a build may move key.properties aside)
+key.properties*
+*.properties.off

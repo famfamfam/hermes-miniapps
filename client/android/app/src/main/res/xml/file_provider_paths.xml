@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The only folder the app hands to other apps by link: a copy of a file the user chose to open. -->
+<paths>
+    <cache-path name="opened_files" path="opened_files/" />
+</paths>

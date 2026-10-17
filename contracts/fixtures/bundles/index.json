@@ -1,0 +1,128 @@
+{
+  "good": {
+    "file": "good.zip",
+    "bundleId": "sha256:dc005e641e58cd475453b4bb09fd21ad42544ea84afc30dee812dd142c6a10b3",
+    "valid": true,
+    "why": "valid bundle with a nested asset"
+  },
+  "traversal": {
+    "file": "traversal.zip",
+    "bundleId": "sha256:48ad31a9223d53a5f86e5f450f9c9b654987becc53af4a3488d1ae8bdee7b70c",
+    "valid": false,
+    "why": "path escapes the bundle root"
+  },
+  "hash_mismatch": {
+    "file": "hash_mismatch.zip",
+    "bundleId": "sha256:aea30ee3c9a90fa4df5c3585e4eb5c0e96669bbf2993e34f53707c352cd3beed",
+    "valid": false,
+    "why": "file content does not match its listed hash"
+  },
+  "unlisted_file": {
+    "file": "unlisted_file.zip",
+    "bundleId": "sha256:fa597d3fe7395f175684ca50c626c673a13797df1614fd4616aa87d6f41efa41",
+    "valid": false,
+    "why": "archive carries a file that bundle.json does not list"
+  },
+  "symlink": {
+    "file": "symlink.zip",
+    "bundleId": "sha256:fa597d3fe7395f175684ca50c626c673a13797df1614fd4616aa87d6f41efa41",
+    "valid": false,
+    "why": "symlink entry",
+    "error": "symlink entry"
+  },
+  "symlink_listed": {
+    "file": "symlink_listed.zip",
+    "bundleId": "sha256:9d617bacbb927d8a4168edc7ba50912ddb2c0920396496bab358f9b6a82f431c",
+    "valid": false,
+    "why": "listed symlink entry, written by a non-Unix host",
+    "error": "symlink entry"
+  },
+  "symlink_listed_unix": {
+    "file": "symlink_listed_unix.zip",
+    "bundleId": "sha256:9d617bacbb927d8a4168edc7ba50912ddb2c0920396496bab358f9b6a82f431c",
+    "valid": false,
+    "why": "listed symlink entry, written by a Unix host",
+    "error": "symlink entry"
+  },
+  "bad_format": {
+    "file": "bad_format.zip",
+    "bundleId": "sha256:fec4fbe440ca763fd9fd3841f818b9ee3c31fdcf7c3eb24a0e64cfd86222b329",
+    "valid": false,
+    "why": "unsupported bundle format",
+    "error": "unsupported bundle format"
+  },
+  "format_true": {
+    "file": "format_true.zip",
+    "bundleId": "sha256:6e660227e3cb792ed1c26707aab703eb0d51ebbe4c415e054e8df21a85d2797f",
+    "valid": false,
+    "why": "format is JSON true, not the integer 1",
+    "error": "unsupported bundle format"
+  },
+  "format_float": {
+    "file": "format_float.zip",
+    "bundleId": "sha256:378b961c5e37fb31c8cf296c4f027c87ec4594c80e87f4ba5d5eee179b2bd430",
+    "valid": false,
+    "why": "format is the float 1.0, not the integer 1",
+    "error": "unsupported bundle format"
+  },
+  "case_collision": {
+    "file": "case_collision.zip",
+    "bundleId": "sha256:d0f84d937d78aeca4528f73738136c0f7fb2e692cbe6005f4e17a8073dd8220e",
+    "valid": false,
+    "why": "names collide on case-insensitive filesystems"
+  },
+  "missing_entrypoint": {
+    "file": "missing_entrypoint.zip",
+    "bundleId": "sha256:d135e2ca8ef4654586fce5206c9319f4e01fc8db6c1c16901ec4a20cb4f714a6",
+    "valid": false,
+    "why": "entrypoint is not a listed file"
+  },
+  "wrong_bundle_id": {
+    "file": "wrong_bundle_id.zip",
+    "bundleId": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "valid": false,
+    "why": "served bytes do not match the announced bundleId"
+  },
+  "manifest_not_object": {
+    "file": "manifest_not_object.zip",
+    "bundleId": "sha256:da4030d94d7e021763a73475c7e0f434f7ce361882886e3c02ca576b275047d5",
+    "valid": false,
+    "why": "bundle.json is a JSON array"
+  },
+  "files_not_objects": {
+    "file": "files_not_objects.zip",
+    "bundleId": "sha256:ffd958c6b15a053c1dfee03d1b8d1203474a7a5c09a187151d3ab7070c678d53",
+    "valid": false,
+    "why": "files entries are strings, not objects"
+  },
+  "size_not_integer": {
+    "file": "size_not_integer.zip",
+    "bundleId": "sha256:cb2a765c06dca00d9d8bc07242424dc57feaaa0977e0279be5a323faac030087",
+    "valid": false,
+    "why": "size is a string"
+  },
+  "capabilities_not_list": {
+    "file": "capabilities_not_list.zip",
+    "bundleId": "sha256:2ae5f6f16655aa50b93e0a3f86b958e23afdf1e4e86d21d9a4dfcf2536acf669",
+    "valid": false,
+    "why": "capabilities is a string"
+  },
+  "capabilities_not_strings": {
+    "file": "capabilities_not_strings.zip",
+    "bundleId": "sha256:0604b3da0ad868c00a5ff2181a27362440e32b72c680fde17714cf3cf8dab42a",
+    "valid": false,
+    "why": "capabilities holds a number"
+  },
+  "sdk_major_missing": {
+    "file": "sdk_major_missing.zip",
+    "bundleId": "sha256:8aab6a261d4de59a814bcd3891d9ead799e0b19819c865c7faffd05820d1ad91",
+    "valid": false,
+    "why": "no sdkMajor"
+  },
+  "entrypoint_not_string": {
+    "file": "entrypoint_not_string.zip",
+    "bundleId": "sha256:fe55510a27ff04375e3221a2cb8a5aa43744158a9995db045ca3c70dc7d1c027",
+    "valid": false,
+    "why": "entrypoint is a list"
+  }
+}
