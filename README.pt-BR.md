@@ -11,6 +11,12 @@ offline a partir de uma cópia salva, lê os seus dados reais e você o refina c
 aplicativo e trocar filtros não gera nenhuma requisição ao LLM; o modelo só é usado quando um aplicativo é criado ou
 alterado. Nada vai ao ar até que você veja uma prévia no celular e a aprove com uma assinatura feita no celular.
 
+| Visão geral | Contas | Nova conta |
+|:---:|:---:|:---:|
+| ![Visão geral](screenshots/miniapp-overview.png) | ![Contas](screenshots/miniapp-bills.png) | ![Nova conta](screenshots/miniapp-new-bill.png) |
+
+*Mini-app de exemplo (o modelo `react-app`, com dados inventados). O Hermes cria telas como estas a partir de um pedido no chat.*
+
 - **Chat** com o Hermes pela API Gateway oficial: respostas em fluxo, sessões, voz, anexos e uma notificação quando a
   resposta fica pronta.
 - **Apps**: o catálogo dos seus miniaplicativos, prévias para aprovar ou rejeitar, exclusão de aplicativos (guardados por

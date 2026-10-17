@@ -11,6 +11,12 @@ real data, and you refine it by talking to Hermes again. Opening an app and swit
 model is used only when an app is created or changed. Nothing goes live until you have seen a preview on the phone and
 approved it with a signature made on the phone.
 
+| Overview | Bills | New bill |
+|:---:|:---:|:---:|
+| ![Overview](screenshots/miniapp-overview.png) | ![Bills](screenshots/miniapp-bills.png) | ![New bill](screenshots/miniapp-new-bill.png) |
+
+*The sample mini-app (the `react-app` template, with made-up data). Hermes builds screens like these from a request in chat.*
+
 - **Chat** with Hermes through its official Gateway API: streaming, sessions, voice, attachments, a notification when an
   answer is ready.
 - **Apps**: the catalogue of your mini-apps, previews to approve or reject, deleting an app (kept 30 days in a trash on

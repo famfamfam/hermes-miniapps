@@ -12,6 +12,12 @@ Hermes. Abrir una aplicación y cambiar filtros no cuesta ninguna petición al L
 se modifica una aplicación. Nada se publica hasta que hayas visto una vista previa en el teléfono y la hayas aprobado con
 una firma hecha en el teléfono.
 
+| Resumen | Facturas | Nueva factura |
+|:---:|:---:|:---:|
+| ![Resumen](screenshots/miniapp-overview.png) | ![Facturas](screenshots/miniapp-bills.png) | ![Nueva factura](screenshots/miniapp-new-bill.png) |
+
+*Mini-app de ejemplo (la plantilla `react-app`, con datos inventados). Hermes crea pantallas como estas a partir de una petición en el chat.*
+
 - **Chat** con Hermes a través de su API Gateway oficial: respuestas en streaming, sesiones, voz, adjuntos y una
   notificación cuando la respuesta está lista.
 - **Apps**: el catálogo de tus miniaplicaciones, vistas previas para aprobar o rechazar, borrado de aplicaciones (se
