@@ -55,7 +55,7 @@ void main() {
   });
 
   group('operations', () {
-    for (final op in ['mutate', 'runAgent', 'openUrl', 'share', 'readFile', 'eval', 'HELLO', 'hello; drop', '', 'a']) {
+    for (final op in ['runAgent', 'openUrl', 'share', 'readFile', 'eval', 'HELLO', 'hello; drop', '', 'a']) {
       test('unknown op ${jsonEncode(op)}', () => expectRejected(gate, msg({'op': op}), 'unknown_op'));
     }
     test('op not a string', () => expectRejected(gate, msg({'op': 5}), 'unknown_op'));
@@ -90,7 +90,7 @@ void main() {
       fail('expected a rejection');
     }
 
-    test('unknown op', () => expect(idOf(() => gate.accept(msg({'op': 'mutate'}, id: 41), sourceOrigin: origin, isMainFrame: true)), 41));
+    test('unknown op', () => expect(idOf(() => gate.accept(msg({'op': 'runAgent'}, id: 41), sourceOrigin: origin, isMainFrame: true)), 41));
     test('bad args', () {
       final m = msg({'op': 'query', 'calls': []}, id: 42);
       expect(idOf(() => gate.accept(m, sourceOrigin: origin, isMainFrame: true)), 42);
@@ -130,6 +130,13 @@ void main() {
       expect(accepted({'op': 'pickFile'}).args, {'accept': <String>[]});
       expect(accepted({'op': 'pickFile', 'accept': ['image/*', 'application/pdf', '.png']}).args['accept'],
           ['image/*', 'application/pdf', '.png']);
+      // The media types of office documents are long: a spreadsheet picker must not be refused for its own name.
+      const sheet = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      const slides = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+      expect(accepted({'op': 'pickFile', 'accept': [sheet, 'application/vnd.ms-excel', '.xlsx']}).args['accept'],
+          [sheet, 'application/vnd.ms-excel', '.xlsx']);
+      expect(accepted({'op': 'pickFile', 'accept': [slides]}).args['accept'], [slides]);
+      expect(accepted({'op': 'pickFile', 'accept': ['a' * maxAcceptEntryChars]}).args['accept'], ['a' * maxAcceptEntryChars]);
       expect(accepted({'op': 'listFiles'}).args, isEmpty);
       expect(accepted({'op': 'deleteFile', 'fileId': id}).args, {'fileId': id});
       expect(accepted({'op': 'saveFile', 'fileId': id}).args, {'fileId': id});
@@ -156,6 +163,8 @@ void main() {
     bad('pickFile: too many entries', {'op': 'pickFile', 'accept': List.generate(9, (i) => 'image/png')});
     bad('pickFile: an entry that is not a media type', {'op': 'pickFile', 'accept': ['image/*; rm -rf']});
     bad('pickFile: an entry that is not a string', {'op': 'pickFile', 'accept': [1]});
+    bad('pickFile: an entry over the length limit', {'op': 'pickFile', 'accept': ['a' * (maxAcceptEntryChars + 1)]});
+    bad('pickFile: an empty entry', {'op': 'pickFile', 'accept': ['']});
     bad('pickFile: an extra field (a path)', {'op': 'pickFile', 'path': '/sdcard/x'});
     bad('listFiles: an extra field', {'op': 'listFiles', 'appId': 'other_app'});
     bad('deleteFile: no id', {'op': 'deleteFile'});
@@ -195,6 +204,58 @@ void main() {
     test('only the listed operations are file operations', () {
       expect(fileOps, {'pickFile', 'listFiles', 'deleteFile', 'saveFile', 'askHermes'});
     });
+  });
+
+  group('mutate (a button that writes)', () {
+    BridgeGate g() => BridgeGate(expectedOrigin: origin);
+    BridgeRequest accepted(Object rpc) => ok(g(), msg(rpc));
+    void bad(String name, Object rpc) => test(name, () => expectRejected(g(), msg(rpc), 'bad_args'));
+
+    test('a name and typed scalar arguments are accepted, and nothing else is passed on', () {
+      expect(accepted({'op': 'mutate', 'name': 'mark_paid', 'args': {'id': 42}}).args, {'name': 'mark_paid', 'args': {'id': 42}});
+      expect(accepted({'op': 'mutate', 'name': 'add_bill', 'args': {'supplier': 'Газ', 'amount': 5000, 'note': null, 'paid': false}}).args,
+          {'name': 'add_bill', 'args': {'supplier': 'Газ', 'amount': 5000, 'note': null, 'paid': false}});
+      expect(accepted({'op': 'mutate', 'name': 'wipe_old'}).args, {'name': 'wipe_old', 'args': <String, dynamic>{}});
+    });
+
+    bad('no name', {'op': 'mutate'});
+    bad('a name that is not a mutation name', {'op': 'mutate', 'name': 'Mark Paid'});
+    bad('a name that is sql', {'op': 'mutate', 'name': 'x; DROP TABLE bills'});
+    bad('a name that is not text', {'op': 'mutate', 'name': 7});
+    bad('sql in the request', {'op': 'mutate', 'name': 'mark_paid', 'sql': 'DELETE FROM bills'});
+    bad('an idempotency key from the page', {'op': 'mutate', 'name': 'mark_paid', 'idempotencyKey': 'k' * 20});
+    bad('a revision from the page', {'op': 'mutate', 'name': 'mark_paid', 'revision': 1});
+    bad('an app from the page', {'op': 'mutate', 'name': 'mark_paid', 'appId': 'other_app'});
+    bad('nested arguments', {'op': 'mutate', 'name': 'mark_paid', 'args': {'id': {'x': 1}}});
+    bad('a list argument', {'op': 'mutate', 'name': 'mark_paid', 'args': {'id': [1]}});
+    bad('an argument name that is not one', {'op': 'mutate', 'name': 'mark_paid', 'args': {'Id-1': 1}});
+    bad('an overlong string', {'op': 'mutate', 'name': 'add_bill', 'args': {'note': 'x' * (maxStringArg + 1)}});
+    bad('too many arguments', {'op': 'mutate', 'name': 'add_bill', 'args': {for (var i = 0; i < 17; i++) 'a$i': 1}});
+
+    test('the largest legal request still fits the message limit, even in a two-byte language', () {
+      final m = msg({'op': 'mutate', 'name': 'm' * 40, 'args': {for (var i = 0; i < 16; i++) 'a${i.toString().padLeft(2, '0')}': 'ж' * 240}});
+      expect(utf8.encode(m).length, lessThan(maxMessageBytes));
+      expect(ok(g(), m).op, 'mutate');
+    });
+
+    test('it counts against the pending limit like every other request', () {
+      final gate = g();
+      for (var i = 0; i < maxPendingRpc; i++) {
+        ok(gate, msg({'op': 'mutate', 'name': 'mark_paid', 'args': {'id': i}}, id: i));
+      }
+      expectRejected(gate, msg({'op': 'mutate', 'name': 'mark_paid'}, id: 99), 'too_many_requests');
+    });
+
+    test('a refusal names the request', () {
+      try {
+        g().accept(msg({'op': 'mutate', 'name': 'X'}, id: 71), sourceOrigin: origin, isMainFrame: true);
+        fail('expected a rejection');
+      } on BridgeRejected catch (e) {
+        expect(e.id, 71);
+      }
+    });
+
+    test('it is the only write operation', () => expect(writeOps, {'mutate'}));
   });
 
   test('pending requests are capped and released', () {

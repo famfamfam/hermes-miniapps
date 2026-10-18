@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { hermes } from "./client";
-import type { FileInfo, GroupResult, HostState, QueryCall } from "./types";
+import { DATA_CHANGED_EVENT, FILES_CHANGED_EVENT } from "./events";
+import type { BridgeError, FileInfo, GroupResult, HostState, MutationResult, QueryCall } from "./types";
+
+export { DATA_CHANGED_EVENT, FILES_CHANGED_EVENT };
 
 export interface GroupState {
   loading: boolean;
@@ -8,9 +11,6 @@ export interface GroupState {
   group: GroupResult | null;
   refetch(): void;
 }
-
-/** Event the host dispatches on the window when a data.changed event or resume happens. */
-export const DATA_CHANGED_EVENT = "hermes:data-changed";
 
 /**
  * Reads several named queries in one request. A newer call always wins: a late answer to an
@@ -44,9 +44,6 @@ export function useQueryGroup(calls: QueryCall[]): GroupState {
 
   return { ...state, refetch: run };
 }
-
-/** Event the host dispatches on the window when the app's stored files change (another device, the author's tools). */
-export const FILES_CHANGED_EVENT = "hermes:files-changed";
 
 export interface FilesState {
   loading: boolean;
@@ -94,4 +91,58 @@ export function useHostState(): HostState | null {
     };
   }, []);
   return state;
+}
+
+export interface MutationState {
+  /** A call is in flight: show it on the button. A second `run` is ignored meanwhile. */
+  pending: boolean;
+  /** Why the last call failed; null after a success, a decline, or `reset()`. */
+  error: BridgeError | null;
+  /** What the last call returned (`done: false` when the user declined the confirmation). */
+  result: MutationResult | null;
+  /** Resolves with the result, or null when it failed (see `error`) or another call was still running. Never rejects. */
+  run(args?: QueryCall["args"]): Promise<MutationResult | null>;
+  reset(): void;
+}
+
+/** A button that writes (see `hermes.mutate`): `const save = useMutation("mark_paid"); save.run({ id })`. */
+export function useMutation(name: string): MutationState {
+  const alive = useRef(true);
+  const busy = useRef(false);
+  const [state, setState] = useState<Pick<MutationState, "pending" | "error" | "result">>({
+    pending: false,
+    error: null,
+    result: null,
+  });
+
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+
+  const run = useCallback(
+    async (args?: QueryCall["args"]) => {
+      if (busy.current) return null;
+      busy.current = true;
+      if (alive.current) setState((s) => ({ ...s, pending: true, error: null }));
+      try {
+        const result = await hermes.mutate(name, args);
+        if (alive.current) setState({ pending: false, error: null, result });
+        return result;
+      } catch (e: unknown) {
+        const code = typeof (e as { code?: unknown })?.code === "string" ? (e as { code: string }).code : "error";
+        const message = e instanceof Error ? e.message : String(e);
+        if (alive.current) setState((s) => ({ ...s, pending: false, error: { code, message } }));
+        return null;
+      } finally {
+        busy.current = false;
+      }
+    },
+    [name],
+  );
+
+  const reset = useCallback(() => setState({ pending: false, error: null, result: null }), []);
+  return { ...state, run, reset };
 }

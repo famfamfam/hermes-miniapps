@@ -621,7 +621,7 @@ class Authoring:
                        "columns": q["columns"], "completeness": q["completeness"]}
                 for name, q in defs["queries"].items()
             },
-            "mutations": {},
+            "mutations": self.store.mutations_manifest(defs),
             **({"files": {name: {"params": f.get("params", {})} for name, f in defs["files"].items()}}
                if defs.get("files") else {}),
             "preview": {

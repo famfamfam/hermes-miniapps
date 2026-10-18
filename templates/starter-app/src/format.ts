@@ -19,6 +19,12 @@ export function money(minor: number, currency: string = isRussian ? "RUB" : "USD
 const month = new Intl.DateTimeFormat(lang, { month: "short", year: "2-digit" });
 const longMonth = new Intl.DateTimeFormat(lang, { month: "long", year: "numeric" });
 
+/** What the user typed ("47.10", "47,10", "47") as an amount in minor units (4710); null when it is not an amount. */
+export function toMinor(text: string): number | null {
+  const m = /^\s*(\d{1,9})(?:[.,](\d{1,2}))?\s*$/.exec(text);
+  return m ? Number(m[1]) * 100 + Number((m[2] ?? "").padEnd(2, "0")) : null;
+}
+
 /** "2026-09" -> "Sep 26" (or "сент. 26"). */
 export function monthLabel(ym: string): string {
   const [y, m] = ym.split("-").map(Number);

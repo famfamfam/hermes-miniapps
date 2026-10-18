@@ -98,6 +98,17 @@ mixin _BindingGate on SurfacesApi {
   @override
   Future<void> deleteFile(String appId, String fileId) => _run(() => delegate.deleteFile(appId, fileId));
 
+  // Buttons that write: forwarded for the same reason as the files above.
+  @override
+  Future<Map<String, dynamic>> mutate(
+    String appId,
+    int revision,
+    String name,
+    Map<String, dynamic> args, {
+    required String key,
+    required String timezone,
+  }) => _run(() => delegate.mutate(appId, revision, name, args, key: key, timezone: timezone));
+
   @override
   void close() {
     if (_closed) return;

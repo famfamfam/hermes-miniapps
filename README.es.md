@@ -12,11 +12,11 @@ Hermes. Abrir una aplicación y cambiar filtros no cuesta ninguna petición al L
 se modifica una aplicación. Nada se publica hasta que hayas visto una vista previa en el teléfono y la hayas aprobado con
 una firma hecha en el teléfono.
 
-| Resumen | Facturas | Nueva factura |
+| Chats | Apps | Dentro de una app |
 |:---:|:---:|:---:|
-| ![Resumen](screenshots/miniapp-overview.png) | ![Facturas](screenshots/miniapp-bills.png) | ![Nueva factura](screenshots/miniapp-new-bill.png) |
+| ![Chats](screenshots/app-chats.png) | ![Apps](screenshots/app-apps.png) | ![Dentro de una app](screenshots/app-miniapp.png) |
 
-*Mini-app de ejemplo (la plantilla `react-app`, con datos inventados). Hermes crea pantallas como estas a partir de una petición en el chat.*
+*La app con datos inventados: la lista de chats, la lista de mini-apps y una mini-app (la plantilla `react-app`). Hermes crea pantallas como la última a partir de una petición en el chat.*
 
 - **Chat** con Hermes a través de su API Gateway oficial: respuestas en streaming, sesiones, voz, adjuntos y una
   notificación cuando la respuesta está lista.
@@ -233,6 +233,8 @@ vista previa en **Apps → Waiting for your decision**: ábrela con datos reales
 cambios de la misma forma. Para borrar una aplicación usa ⋮ → Delete app: pasa a la papelera del servidor durante 30 días
 (`ms_admin trash`, `ms_admin restore-app <name>`).
 
+Los botones que guardan, marcan o borran funcionan sin modelo: Hermes declara cada uno como un cambio con nombre en la base de datos de la propia app, usted lo aprueba junto con la app, y todo lo que borra vuelve a preguntarle en el teléfono. Cuando un botón necesita al propio agente (generar una imagen, leer un PDF), envía a Hermes un mensaje que usted lee y envía por sí mismo.
+
 ## Actualizar y desinstalar
 
 ```sh
@@ -279,6 +281,7 @@ bloque `mcp_servers.surfaces` y la línea `MOBILE_SURFACES_MCP_TOKEN`.
 - El primer teléfono que se empareja pasa a ser el aprobador (confianza en el primer uso). Un código de conexión es de un
   solo uso, dura 15 minutos y se guarda solo como resumen (digest). El borrado de una aplicación se firma sobre un mensaje
   propio, de modo que una firma de publicación no borra nada, y al revés.
+- Un botón solo puede ejecutar un cambio con nombre que fue revisado y firmado junto con la app; la página no envía SQL. Una app sobre la base de datos de otra skill sigue siendo de solo lectura hasta que el administrador ejecute `ms_admin allow-writes <app>` (el servicio también debe poder escribir en ese archivo y en su carpeta); la skill dueña del archivo no sabe de esos cambios.
 
 Los puntos abiertos conocidos están en [SECURITY.md](SECURITY.md), junto con cómo informar de una vulnerabilidad.
 

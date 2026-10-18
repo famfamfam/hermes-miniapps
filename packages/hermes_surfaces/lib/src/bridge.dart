@@ -37,10 +37,16 @@ class BridgeRequest {
 /// them only with a native step the user performs (a picker, a sheet, a confirmation).
 const Set<String> fileOps = {'pickFile', 'listFiles', 'deleteFile', 'saveFile', 'askHermes'};
 
+/// Operations that change the app's data on the server. The host answers them only with the server's own reviewed
+/// mutation of that name and, for a deleting one, a native confirmation.
+const Set<String> writeOps = {'mutate'};
+
 const int maxPromptChars = 2400;
 const int maxAskFiles = 8;
 const int maxAcceptEntries = 8;
-final RegExp _acceptEntry = RegExp(r'^[A-Za-z0-9./*+-]{1,60}$');
+// Long enough for the media types of office documents (the spreadsheet one is 65 characters, the presentation one 73).
+const int maxAcceptEntryChars = 127;
+final RegExp _acceptEntry = RegExp('^[A-Za-z0-9./*+-]{1,$maxAcceptEntryChars}\$');
 final RegExp _fileId = RegExp(r'^f_[0-9a-f]{16}$');
 
 /// Gatekeeper for page -> host messages (ADR-006 §3). Authority never comes from the message:
@@ -101,6 +107,10 @@ class BridgeGate {
         final args = _fileArgs(op, rpc, id);
         _pending++;
         return BridgeRequest(id, op, args: args);
+      case 'mutate':
+        final args = _mutateArgs(rpc, id);
+        _pending++;
+        return BridgeRequest(id, op, args: args);
       default:
         throw BridgeRejected('unknown_op', op, id: id);
     }
@@ -157,6 +167,16 @@ class BridgeGate {
         if (ids.toSet().length != ids.length) throw bad('a file is listed twice');
         return {'prompt': prompt, 'fileIds': ids};
     }
+  }
+
+  /// A button that writes: the name of one of the app's reviewed mutations and typed scalar arguments. No SQL, no
+  /// idempotency key (the host makes it), nothing else.
+  Map<String, dynamic> _mutateArgs(Map<String, dynamic> rpc, int id) {
+    BridgeRejected bad(String detail) => BridgeRejected('bad_args', 'mutate: $detail', id: id);
+    if (rpc.keys.any((k) => k != 'op' && k != 'name' && k != 'args')) throw bad('unexpected field');
+    final name = rpc['name'];
+    if (name is! String || !_queryName.hasMatch(name)) throw bad('bad mutation name');
+    return {'name': name, 'args': _scalarArgs(rpc['args'], id, 'mutate')};
   }
 
   /// Typed scalar arguments, the same rule the named queries use.

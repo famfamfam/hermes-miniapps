@@ -325,3 +325,44 @@ def run_write(
         except sqlite3.Error as exc:
             raise _translate(exc) from None
     return SqlResult(rowcount=rowcount, tables=sorted(authorizer.touched), deletes=sorted(deletes))
+
+
+MAX_GROUP_STATEMENTS = 5
+
+
+@dataclass
+class GroupResult:
+    """What a mutation did: rows changed over all its statements, the id of the last inserted row (if any)."""
+
+    rows_affected: int = 0
+    last_insert_id: int | None = None
+    tables: list[str] = field(default_factory=list)
+    deletes: list[str] = field(default_factory=list)
+
+
+def run_write_group(
+    conn: sqlite3.Connection,
+    statements: list[str],
+    bindings: dict[str, Any],
+    *,
+    caller: str,
+    timeout_s: float | None = None,
+) -> GroupResult:
+    """The statements of one mutation, in order, inside the caller's transaction. Every statement runs under the
+    write authorizer of `caller` with the same named bindings; the caller commits or rolls back all of them."""
+    if not 1 <= len(statements) <= MAX_GROUP_STATEMENTS:
+        raise SandboxError(f"a mutation has 1-{MAX_GROUP_STATEMENTS} statements")
+    out = GroupResult()
+    tables: set[str] = set()
+    deletes: set[str] = set()
+    for sql in statements:
+        result = run_write(conn, sql, bindings, mode=WRITE, caller=caller, timeout_s=timeout_s)
+        out.rows_affected += max(result.rowcount, 0)
+        tables.update(result.tables)
+        deletes.update(result.deletes)
+    try:  # authorizer is disarmed: trusted library code, a plain connection function
+        out.last_insert_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0] or None
+    except sqlite3.Error as exc:
+        raise _translate(exc) from None
+    out.tables, out.deletes = sorted(tables), sorted(deletes)
+    return out

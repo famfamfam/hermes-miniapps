@@ -18,15 +18,22 @@ from typing import Any
 from . import linked
 from . import params as P
 from . import sandbox
-from .appdb import AppDb
+from .appdb import IDEMPOTENCY_REUSED, AppDb, IdempotencyConflict, MutationOutcome
 from .bundle import BuiltBundle, BundleError, verify_bundle
-from .errors import ApprovalRefused, Conflict, NotFound, StoreError, TooManyAttempts  # noqa: F401 - re-exported
+from .errors import (  # noqa: F401 - re-exported
+    ApprovalRefused, Conflict, NotFound, OutcomeUnknown, RequestKeyReused, StoreError, TooManyAttempts,
+)
 from .files import AppFiles
 from .linked import LinkedDb
 
 APP_ID = re.compile(r"^[a-z][a-z0-9_]{1,39}$")
 BUNDLE_ID = re.compile(r"^sha256:[0-9a-f]{64}$")
 SHAPES = ("rows", "row", "value")
+REQUEST_KEY = re.compile(r"^[A-Za-z0-9_-]{16,64}$")
+# `destructive` is only ever COMPUTED from the SQL. It is accepted (and ignored) on input because the contract that is
+# approved and published is the normalised one, which carries it, and publishing validates that contract again.
+MUTATION_KEYS = {"sql", "statements", "params", "label", "confirm", "destructive"}
+MUTATION_LOG_KEEP_S = 24 * 3600
 DEFAULT_MAX_ROWS = 200
 # ADR-002 §5: events of the shared journal older than 24 hours are deleted. The sweep runs only once the
 # oldest row is an hour past that, so a busy journal is trimmed about once an hour, not on every poll.
@@ -77,7 +84,20 @@ CREATE TABLE IF NOT EXISTS app_sources (
     path TEXT NOT NULL,
     signature TEXT NOT NULL,
     data_rev INTEGER NOT NULL DEFAULT 1,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    -- 1 only when the administrator allowed reviewed mutations of this app to write into the file.
+    writable INTEGER NOT NULL DEFAULT 0
+);
+-- Requests of a linked app that wrote (or may have written) into the foreign file. The file itself carries no
+-- idempotency table, so the record is kept here: `pending` before the write, `done` with the result after.
+CREATE TABLE IF NOT EXISTS mutation_log (
+    app_id TEXT NOT NULL,
+    key TEXT NOT NULL,
+    body_hash TEXT NOT NULL,
+    state TEXT NOT NULL,
+    result TEXT,
+    created_at REAL NOT NULL,
+    PRIMARY KEY (app_id, key)
 );
 -- Public keys of devices allowed to approve a publication (ADR-007 §5). The private key never leaves
 -- the phone; the server can verify an approval but cannot produce one.
@@ -174,6 +194,11 @@ class Store:
         try:
             conn.execute("PRAGMA journal_mode = WAL")
             conn.executescript(_REGISTRY)
+            if "writable" not in {r[1] for r in conn.execute("PRAGMA table_info(app_sources)")}:
+                try:  # a registry made before writing existed; another process may add it first
+                    conn.execute("ALTER TABLE app_sources ADD COLUMN writable INTEGER NOT NULL DEFAULT 0")
+                except sqlite3.OperationalError:
+                    pass
             conn.execute("INSERT OR IGNORE INTO meta(key, value) VALUES ('epoch', ?)", (uuid.uuid4().hex[:12],))
         finally:
             conn.close()
@@ -203,18 +228,34 @@ class Store:
         A linked app answers with a read-only handle over the file its owner maintains.
         """
         self._row(app_id)
-        source = self._source_path(app_id)
+        source = self._source(app_id)
         if source is not None:
-            return LinkedDb(source, lambda: self._linked_rev(app_id)[0])
+            return LinkedDb(source[0], lambda: self._linked_rev(app_id)[0], writable=source[1])
         return AppDb(self._app_dir(app_id) / "data.db")
 
-    def _source_path(self, app_id: str) -> Path | None:
+    def _source(self, app_id: str) -> tuple[Path, bool] | None:
+        """The file a linked app reads and whether the administrator let it write there."""
         conn = self._registry()
         try:
-            row = conn.execute("SELECT path FROM app_sources WHERE app_id = ?", (app_id,)).fetchone()
+            row = conn.execute("SELECT path, writable FROM app_sources WHERE app_id = ?", (app_id,)).fetchone()
         finally:
             conn.close()
-        return Path(row["path"]) if row else None
+        return (Path(row["path"]), bool(row["writable"])) if row else None
+
+    def set_source_writable(self, app_id: str, writable: bool) -> None:
+        """Let (or stop) the reviewed mutations of a linked app write into its foreign file. An administrator
+        action: nothing the phone or the author can reach calls this. Writes only the registry."""
+        conn = self._registry()
+        try:
+            cur = conn.execute("UPDATE app_sources SET writable = ? WHERE app_id = ?", (int(writable), app_id))
+            if cur.rowcount == 0:
+                raise StoreError("this app does not read a linked database")
+        finally:
+            conn.close()
+
+    def source_path(self, app_id: str) -> Path | None:
+        found = self._source(app_id)
+        return found[0] if found else None
 
     def _linked_rev(self, app_id: str) -> tuple[int, bool]:
         """Current dataRev of a linked app and whether this call advanced it.
@@ -349,7 +390,7 @@ class Store:
         conn = self._registry()
         try:
             rows = conn.execute("SELECT * FROM apps ORDER BY title").fetchall()
-            linked_ids = {r[0] for r in conn.execute("SELECT app_id FROM app_sources")}
+            linked_ids = {r[0]: bool(r[1]) for r in conn.execute("SELECT app_id, writable FROM app_sources")}
         finally:
             conn.close()
         return [
@@ -358,6 +399,8 @@ class Store:
                 "published": r["bundle_id"] is not None,
                 "brief": r["brief"],
                 "linked": r["app_id"] in linked_ids,
+                # Whether buttons may write into the linked database: only the administrator can switch it on.
+                **({"writable": linked_ids[r["app_id"]]} if r["app_id"] in linked_ids else {}),
             }
             for r in rows
         ]
@@ -399,12 +442,23 @@ class Store:
                 }
                 for name, q in defs["queries"].items()
             },
-            "mutations": {
-                name: {"params": m.get("params", {}), "destructive": m["destructive"]}
-                for name, m in defs["mutations"].items()
-            },
+            "mutations": self.mutations_manifest(defs),
             **({"files": {name: {"params": f.get("params", {})} for name, f in defs["files"].items()}}
                if defs.get("files") else {}),
+        }
+
+    @staticmethod
+    def mutations_manifest(defs: dict[str, Any]) -> dict[str, Any]:
+        """What the phone may know about the buttons that write: typed arguments, whether one deletes, the label
+        for its confirmation window. Never the SQL."""
+        return {
+            name: {
+                "params": m.get("params", {}),
+                "destructive": m["destructive"],
+                **({"label": m["label"]} if m.get("label") else {}),
+                **({"confirm": True} if m.get("confirm") else {}),
+            }
+            for name, m in defs["mutations"].items()
         }
 
     def bundle_path(self, app_id: str, bundle_id: str) -> Path:
@@ -495,20 +549,52 @@ class Store:
             "columns": result.columns, "completeness": completeness,
         }
 
-    def _check_mutation(self, db: AppDb, name: str, m: dict[str, Any]) -> dict[str, Any]:
+    def _check_mutation(self, db: AppDb, name: str, m: Any) -> dict[str, Any]:
+        """A button that writes: one reviewed statement (`sql`) or up to five that run together (`statements`),
+        typed `params`, an optional `label` for the confirmation window and `confirm` to always ask first."""
         self._check_name(name)
-        sql, specs = m.get("sql"), m.get("params") or {}
-        if not isinstance(sql, str):
+        if not isinstance(m, dict) or set(m) - MUTATION_KEYS:
+            raise StoreError(f"mutation {name}: expected an object with sql or statements, params, label and confirm")
+        specs = m.get("params") or {}
+        sql, many = m.get("sql"), m.get("statements")
+        if (sql is None) == (many is None):
+            raise StoreError(f"mutation {name}: give sql (one statement) or statements (several), not both or neither")
+        most = sandbox.MAX_GROUP_STATEMENTS
+        if many is not None:
+            if not isinstance(many, list) or not 2 <= len(many) <= most or not all(isinstance(x, str) for x in many):
+                raise StoreError(f"mutation {name}: statements is a list of 2-{most} SQL strings (use sql for one)")
+            statements = list(many)
+        elif isinstance(sql, str):
+            statements = [sql]
+        else:
             raise StoreError(f"mutation {name}: needs sql")
-        self._check_params(f"mutation {name}", sql, specs)
+        label, confirm = m.get("label"), m.get("confirm")
+        if label is not None and (
+            not isinstance(label, str) or not 1 <= len(label.strip()) <= 60 or any(ord(c) < 32 for c in label)
+        ):
+            raise StoreError(f"mutation {name}: label is 1-60 characters of plain text")
+        if confirm is not None and not isinstance(confirm, bool):
+            raise StoreError(f"mutation {name}: confirm is true or false")
+        self._check_params(f"mutation {name}", "\n".join(statements), specs)
         bindings = {k: None for k in specs} | P.service_bindings(device_id="probe", tz_name=None)
-        try:
-            result = db.probe_statement(sql, bindings, mode=sandbox.WRITE)
-        except sandbox.SandboxError as exc:
-            raise StoreError(f"mutation {name}: {exc}") from None
-        if not result.tables:
-            raise StoreError(f"mutation {name}: statement does not write to any table")
-        return {"sql": sql, "params": specs, "destructive": bool(result.deletes)}
+        deletes = False
+        for number, statement in enumerate(statements, 1):
+            where = f"mutation {name}" + (f", statement {number}" if many is not None else "")
+            try:
+                result = db.probe_statement(statement, bindings, mode=sandbox.WRITE)
+            except sandbox.SandboxError as exc:
+                raise StoreError(f"{where}: {exc}") from None
+            if not result.tables:
+                raise StoreError(f"{where}: statement does not write to any table")
+            deletes = deletes or bool(result.deletes)
+        # Keys that are not used are not stored, so the contract of an app that never had them stays byte for byte.
+        out: dict[str, Any] = {"params": specs, "destructive": deletes}
+        out.update({"statements": statements} if many is not None else {"sql": sql})
+        if label is not None:
+            out["label"] = label.strip()
+        if confirm:
+            out["confirm"] = True
+        return out
 
     def _check_file(self, db: AppDb, name: str, f: Any, roots: set[str]) -> dict[str, Any]:
         """A file locator: a reviewed query that returns one file reference, and the linked folder it points into."""
@@ -640,6 +726,7 @@ class Store:
                     (slot / "rows.json").write_text(json.dumps(saved, ensure_ascii=False), encoding="utf-8")
                     for table in _TRASH_TABLES:
                         conn.execute(f"DELETE FROM {table} WHERE app_id = ?", (app_id,))
+                    conn.execute("DELETE FROM mutation_log WHERE app_id = ?", (app_id,))  # not restored: only a day old
                     for etype in ("registry.changed", "app.deleted"):
                         conn.execute(
                             "INSERT INTO events(ts, type, app_id, bundle_id, payload) VALUES (?,?,?,NULL,?)",
@@ -1107,6 +1194,111 @@ class Store:
             completeness = "bounded" if res.truncated else q["completeness"]
             out[name] = {"data": data, "completeness": completeness}
         return {"revision": revision, "dataRev": data_rev, "epoch": self.epoch(), "results": out}
+
+    def run_mutation(
+        self,
+        app_id: str,
+        revision: int,
+        name: str,
+        args: dict[str, Any] | None,
+        *,
+        key: str,
+        device_id: str,
+        tz_name: str | None,
+    ) -> dict[str, Any]:
+        """One tap on a button that writes: the app's reviewed mutation `name` with typed arguments, once per key.
+
+        Only for a published app and its current revision. The page names the mutation and gives arguments;
+        the SQL is the one that was reviewed and signed. A request that arrives twice with the same key writes
+        once and returns the first answer (ADR-004 §2-3).
+        """
+        row = self._row(app_id)
+        if row["bundle_id"] is None:
+            raise NotFound("app is not published")
+        if revision != row["revision"]:
+            raise Conflict("stale revision")
+        if not isinstance(key, str) or not REQUEST_KEY.match(key):
+            raise StoreError("idempotencyKey must be 16-64 characters: letters, digits, - and _")
+        m = json.loads(row["definitions"])["mutations"].get(name)
+        if m is None:
+            raise StoreError(f"unknown mutation: {name!r}")
+        try:
+            bound = P.bind_args(m["params"], args)
+        except P.ParamError as exc:
+            raise StoreError(f"mutation {name}: {exc}") from None
+        bindings = bound | P.service_bindings(device_id=device_id, tz_name=tz_name)
+        statements = m.get("statements") or [m["sql"]]
+        # What identifies the request: the mutation and its (already typed) arguments, not the time it was sent.
+        body_hash = hashlib.sha256(json.dumps({"name": name, "args": bound}, sort_keys=True).encode()).hexdigest()
+        db = self.app_db(app_id)
+        try:
+            if isinstance(db, LinkedDb):
+                outcome = self._write_linked(app_id, db, statements, bindings, key, body_hash)
+            else:
+                outcome = db.write_many(statements, bindings, caller=sandbox.PHONE, key=key, body_hash=body_hash)
+        except IdempotencyConflict as exc:
+            raise RequestKeyReused(str(exc)) from None
+        except sandbox.SandboxError as exc:
+            raise StoreError(f"mutation {name}: {exc}") from None
+        return {
+            "revision": revision,
+            "epoch": self.epoch(),
+            "dataRev": outcome.data_rev,
+            "rowsAffected": outcome.rows_affected,
+            "lastInsertId": outcome.last_insert_id,
+            "replayed": outcome.replayed,
+        }
+
+    def _write_linked(
+        self, app_id: str, db: LinkedDb, statements: list[str], bindings: dict[str, Any], key: str, body_hash: str
+    ) -> Any:
+        """A mutation into a database the administrator allowed this app to write. The record of the request is in
+        the registry: `pending` before the foreign file is touched, `done` with the answer after. A request that
+        finds `pending` cannot know whether the write happened, so it is refused rather than repeated."""
+        if not db.writable:
+            raise sandbox.SandboxError(linked.READ_ONLY_MESSAGE)
+        now = time.time()
+        conn = self._registry()
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                conn.execute("DELETE FROM mutation_log WHERE created_at < ?", (now - MUTATION_LOG_KEEP_S,))
+                seen = conn.execute(
+                    "SELECT body_hash, state, result FROM mutation_log WHERE app_id = ? AND key = ?", (app_id, key)
+                ).fetchone()
+                if seen is not None:
+                    if seen["body_hash"] != body_hash:
+                        raise IdempotencyConflict(IDEMPOTENCY_REUSED)
+                    if seen["state"] != "done":
+                        raise OutcomeUnknown(
+                            "an earlier attempt with this key may or may not have changed the data; look at the data "
+                            "before trying again"
+                        )
+                    stored = json.loads(seen["result"])
+                    conn.execute("COMMIT")
+                    return MutationOutcome(stored["dataRev"], stored["rowsAffected"], stored["lastInsertId"], True)
+                conn.execute(
+                    "INSERT INTO mutation_log(app_id, key, body_hash, state, created_at) VALUES (?,?,?,'pending',?)",
+                    (app_id, key, body_hash, now),
+                )
+                conn.execute("COMMIT")
+            except BaseException:
+                conn.execute("ROLLBACK")
+                raise
+            try:
+                done = db.write_many(statements, bindings, caller=sandbox.PHONE)
+            except BaseException:
+                # The statements ran in one transaction that was rolled back: nothing changed, so a retry may run.
+                conn.execute("DELETE FROM mutation_log WHERE app_id = ? AND key = ?", (app_id, key))
+                raise
+            outcome = MutationOutcome(self._linked_rev(app_id)[0], done.rows_affected, done.last_insert_id)
+            conn.execute(
+                "UPDATE mutation_log SET state = 'done', result = ? WHERE app_id = ? AND key = ?",
+                (json.dumps(outcome.as_dict()), app_id, key),
+            )
+            return outcome
+        finally:
+            conn.close()
 
     def agent_sql(
         self, app_id: str, mode: str, sql: str, params: Any = None, params_list: list[Any] | None = None

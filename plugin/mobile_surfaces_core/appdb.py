@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import time
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -21,6 +22,36 @@ CREATE TABLE IF NOT EXISTS _ms_outbox (
     payload TEXT NOT NULL
 );
 """
+
+
+# A result is kept this long so that a phone that lost the answer can ask again with the same key (ADR-004 §3).
+IDEMPOTENCY_KEEP_S = 24 * 3600
+IDEMPOTENCY_REUSED = "this request key was already used for a different request"
+_IDEMPOTENCY = """
+CREATE TABLE IF NOT EXISTS _ms_idempotency (
+    key TEXT PRIMARY KEY,
+    body_hash TEXT NOT NULL,
+    result TEXT NOT NULL,
+    created_at REAL NOT NULL
+)
+"""
+
+
+class IdempotencyConflict(Exception):
+    """The key of a mutation request was used before for a different request."""
+
+
+@dataclass(frozen=True)
+class MutationOutcome:
+    """The answer to a mutation: the new dataRev, rows changed and the last inserted row id (None if none)."""
+
+    data_rev: int
+    rows_affected: int
+    last_insert_id: int | None
+    replayed: bool = False
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"dataRev": self.data_rev, "rowsAffected": self.rows_affected, "lastInsertId": self.last_insert_id}
 
 
 @dataclass(frozen=True)
@@ -150,6 +181,52 @@ class AppDb:
                 conn.execute("ROLLBACK")
                 raise
             return rev, result
+        finally:
+            conn.close()
+
+    def write_many(
+        self,
+        statements: list[str],
+        bindings: dict[str, Any],
+        *,
+        caller: str,
+        key: str,
+        body_hash: str,
+        now: float | None = None,
+        timeout_s: float | None = None,
+    ) -> "MutationOutcome":
+        """The statements of one mutation in one transaction, exactly once per idempotency key.
+
+        The key and the result are stored in the same transaction as the data (`_ms_idempotency`), so a
+        write is either fully recorded with its key or not there at all. The same key with the same request
+        answers with the stored result and writes nothing; the same key with another request is refused.
+        Rows older than a day are dropped here, which bounds the table.
+        """
+        stamp = time.time() if now is None else now
+        conn = sandbox.connect(self.path, readonly=False, max_db_bytes=self.max_bytes)
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                conn.execute(_IDEMPOTENCY)
+                conn.execute("DELETE FROM _ms_idempotency WHERE created_at < ?", (stamp - IDEMPOTENCY_KEEP_S,))
+                seen = conn.execute("SELECT body_hash, result FROM _ms_idempotency WHERE key = ?", (key,)).fetchone()
+                if seen is not None:
+                    if seen[0] != body_hash:
+                        raise IdempotencyConflict(IDEMPOTENCY_REUSED)
+                    stored = json.loads(seen[1])
+                    conn.execute("COMMIT")
+                    return MutationOutcome(stored["dataRev"], stored["rowsAffected"], stored["lastInsertId"], True)
+                done = sandbox.run_write_group(conn, statements, bindings, caller=caller, timeout_s=timeout_s)
+                outcome = MutationOutcome(self._bump(conn, done.tables), done.rows_affected, done.last_insert_id)
+                conn.execute(
+                    "INSERT INTO _ms_idempotency(key, body_hash, result, created_at) VALUES (?,?,?,?)",
+                    (key, body_hash, json.dumps(outcome.as_dict()), stamp),
+                )
+                conn.execute("COMMIT")
+                return outcome
+            except BaseException:
+                conn.execute("ROLLBACK")
+                raise
         finally:
             conn.close()
 

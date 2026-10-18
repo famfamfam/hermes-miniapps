@@ -37,6 +37,14 @@ const _extensionsOfType = <String, List<String>>{
   'text/csv': ['csv'],
   'application/json': ['json'],
   'application/zip': ['zip'],
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['xlsx'],
+  'application/vnd.ms-excel': ['xls'],
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': [
+    'docx',
+  ],
+  'application/msword': ['doc'],
+  'application/vnd.oasis.opendocument.spreadsheet': ['ods'],
+  'application/vnd.oasis.opendocument.text': ['odt'],
 };
 
 /// The picker's filter for a page's `accept` list. Nothing listed, or anything this cannot express (`video/*`,

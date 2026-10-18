@@ -11,11 +11,11 @@ offline a partir de uma cópia salva, lê os seus dados reais e você o refina c
 aplicativo e trocar filtros não gera nenhuma requisição ao LLM; o modelo só é usado quando um aplicativo é criado ou
 alterado. Nada vai ao ar até que você veja uma prévia no celular e a aprove com uma assinatura feita no celular.
 
-| Visão geral | Contas | Nova conta |
+| Chats | Apps | Dentro de um app |
 |:---:|:---:|:---:|
-| ![Visão geral](screenshots/miniapp-overview.png) | ![Contas](screenshots/miniapp-bills.png) | ![Nova conta](screenshots/miniapp-new-bill.png) |
+| ![Chats](screenshots/app-chats.png) | ![Apps](screenshots/app-apps.png) | ![Dentro de um app](screenshots/app-miniapp.png) |
 
-*Mini-app de exemplo (o modelo `react-app`, com dados inventados). O Hermes cria telas como estas a partir de um pedido no chat.*
+*O app com dados inventados: a lista de chats, a lista de mini-apps e um mini-app (o modelo `react-app`). O Hermes cria telas como a última a partir de um pedido no chat.*
 
 - **Chat** com o Hermes pela API Gateway oficial: respostas em fluxo, sessões, voz, anexos e uma notificação quando a
   resposta fica pronta.
@@ -230,6 +230,8 @@ em **Apps → Waiting for your decision**: abra-a com dados reais e então publi
 jeito. Para excluir um aplicativo use ⋮ → Delete app: ele vai para a lixeira do servidor por 30 dias (`ms_admin trash`,
 `ms_admin restore-app <name>`).
 
+Os botões que salvam, marcam ou apagam funcionam sem modelo: o Hermes declara cada um como uma alteração nomeada no banco do próprio app, você a aprova junto com o app, e tudo o que apaga pergunta de novo no telefone. Quando um botão precisa do próprio agente (gerar uma imagem, ler um PDF), ele envia ao Hermes uma mensagem que você lê e envia você mesmo.
+
 ## Atualizar e desinstalar
 
 ```sh
@@ -275,6 +277,7 @@ bancos de dados e os tokens. O Hermes só é alterado com `--write-hermes-config
 - O primeiro celular a parear vira o aprovador (confiança no primeiro uso). Um código de conexão é de uso único, vale 15
   minutos e é guardado apenas como resumo (digest). A exclusão de um aplicativo é assinada sobre uma mensagem própria, de
   modo que uma assinatura de publicação não exclui nada, e vice-versa.
+- Um botão só pode executar uma alteração nomeada que foi revisada e assinada junto com o app; a página não envia SQL. Um app sobre o banco de outra skill continua somente leitura até o administrador executar `ms_admin allow-writes <app>` (o serviço também precisa ter permissão para gravar nesse arquivo e na pasta dele); a skill dona do arquivo não sabe dessas alterações.
 
 Os pontos em aberto conhecidos estão listados em [SECURITY.md](SECURITY.md), junto com a forma de relatar uma
 vulnerabilidade.

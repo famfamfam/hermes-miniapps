@@ -40,6 +40,16 @@ class DownloadRequest(BaseModel):
     timezone: str | None = None
 
 
+class MutationRequest(BaseModel):
+    """A tap on a button that writes. The key makes a repeated request (a lost answer, a second tap that got
+    through) change the data once; the phone creates it, one per user action."""
+
+    revision: int
+    args: dict[str, Any] | None = None
+    idempotencyKey: str = Field(min_length=16, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
+    timezone: str | None = None
+
+
 class Hello(BaseModel):
     hostVersion: str
     sdkMajor: int
@@ -107,6 +117,7 @@ def create_router(
             "appDelete": authoring is not None,
             "pairCode": True,
             "files": True,
+            "mutations": True,
         }
 
     @router.post("/admin/pair-code")
@@ -179,6 +190,17 @@ def create_router(
             app_id, body.revision, name, body.args, device_id=x_device_id, tz_name=body.timezone
         )
         return _attachment(path, filename, mime, {"Cache-Control": "private, no-store"})
+
+    @router.post("/apps/{app_id}/mutations/{name}")
+    def mutate(
+        app_id: str, name: str, body: MutationRequest, x_device_id: str = Header(default="unknown", max_length=64)
+    ) -> Any:
+        """Run one of the published app's reviewed mutations (ADR-004 §2-3). There is no such route for a draft
+        under review: a preview never writes."""
+        return store.run_mutation(
+            app_id, body.revision, name, body.args, key=body.idempotencyKey, device_id=x_device_id,
+            tz_name=body.timezone,
+        )
 
     @router.get("/apps/{app_id}/files")
     def list_files(app_id: str) -> dict[str, Any]:
@@ -313,7 +335,10 @@ def mount(
 
     @app.exception_handler(StoreError)
     async def _store_error(request: Request, exc: StoreError) -> JSONResponse:
-        return JSONResponse({"error": str(exc)}, status_code=exc.status)
+        body: dict[str, Any] = {"error": str(exc)}
+        if exc.code:
+            body["code"] = exc.code
+        return JSONResponse(body, status_code=exc.status)
 
     app.include_router(create_router(store, dependencies, authoring), prefix=prefix)
     if claim_token is not None:

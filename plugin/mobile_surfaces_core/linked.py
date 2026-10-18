@@ -77,12 +77,50 @@ def signature(path: Path) -> str:
     return "|".join(parts)
 
 
-class LinkedDb:
-    """Same read surface as `AppDb`, over a foreign database. Writes are refused."""
+NOT_WRITABLE_MESSAGE = (
+    "the service is not allowed to write to this database or to its folder (SQLite needs both); the administrator "
+    "can see what to change with `ms_admin allow-writes`"
+)
 
-    def __init__(self, path: Path, current_rev: Callable[[], int]) -> None:
+
+class SourceNotWritable(sandbox.SandboxError):
+    """Writing was enabled for this app, but the operating system does not let the service write to the file."""
+
+    def __init__(self) -> None:
+        super().__init__(NOT_WRITABLE_MESSAGE)
+
+
+def _not_writable(exc: sqlite3.OperationalError) -> bool:
+    text = str(exc).lower()
+    return "readonly" in text or "read-only" in text or "unable to open" in text or "permission" in text
+
+
+class LinkedDb:
+    """Same read surface as `AppDb`, over a foreign database. Writes are refused unless the administrator
+    switched them on for this app (`writable`); even then nothing is added to the file."""
+
+    def __init__(self, path: Path, current_rev: Callable[[], int], writable: bool = False) -> None:
         self.path = path
         self._current_rev = current_rev
+        self.writable = writable
+
+    def _open_for_writing(self) -> sqlite3.Connection:
+        """A writable connection with the write lock taken. The size cap leaves room to grow beyond what the
+        file already holds: the file is not ours, so the usual 64 MiB total would stop every write."""
+        try:
+            conn = sandbox.connect(
+                self.path, readonly=False, max_db_bytes=self.path.stat().st_size + sandbox.DEFAULT_DB_BYTES
+            )
+        except (sqlite3.Error, OSError) as exc:
+            raise SourceUnavailable(exc if isinstance(exc, sqlite3.Error) else sqlite3.Error(str(exc))) from None
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+        except sqlite3.OperationalError as exc:
+            conn.close()
+            if _not_writable(exc):
+                raise SourceNotWritable() from None
+            raise SourceUnavailable(exc) from None
+        return conn
 
     def read_group(
         self, specs: list[tuple[str, dict[str, Any], int]], *, caller: str, timeout_s: float | None = None
@@ -111,6 +149,18 @@ class LinkedDb:
             raise SourceUnavailable(exc) from None
 
     def probe_statement(self, sql: str, bindings: dict[str, Any], *, mode: str, shape_rows: int = 1) -> SqlResult:
+        if mode == sandbox.WRITE and self.writable:
+            # Compiled only (EXPLAIN) inside a transaction that is always rolled back, as for an own database.
+            conn = self._open_for_writing()
+            try:
+                try:
+                    return sandbox.run_write(conn, "EXPLAIN " + sql, bindings, mode=mode, caller=sandbox.PHONE)
+                finally:
+                    conn.execute("ROLLBACK")
+            except sqlite3.Error as exc:
+                raise SourceUnavailable(exc) from None
+            finally:
+                conn.close()
         if mode != sandbox.READ:
             raise sandbox.SandboxError(READ_ONLY_MESSAGE)
         try:
@@ -127,4 +177,27 @@ class LinkedDb:
             raise SourceUnavailable(exc) from None
 
     def write(self, *args: Any, **kwargs: Any) -> Any:
-        raise sandbox.SandboxError(READ_ONLY_MESSAGE)
+        raise sandbox.SandboxError(READ_ONLY_MESSAGE)  # the author's free-form SQL tool never writes here
+
+    def write_many(
+        self, statements: list[str], bindings: dict[str, Any], *, caller: str, timeout_s: float | None = None
+    ) -> sandbox.GroupResult:
+        """The statements of one reviewed mutation in one transaction, only when writing was switched on.
+
+        Nothing is stored in the foreign file (no `_ms_*` tables), so the caller keeps the idempotency record
+        in the registry, and the data revision follows the file's signature as for reads."""
+        if not self.writable:
+            raise sandbox.SandboxError(READ_ONLY_MESSAGE)
+        conn = self._open_for_writing()
+        try:
+            try:
+                done = sandbox.run_write_group(conn, statements, bindings, caller=caller, timeout_s=timeout_s)
+                conn.execute("COMMIT")
+                return done
+            except BaseException:
+                conn.execute("ROLLBACK")
+                raise
+        except sqlite3.OperationalError as exc:
+            raise (SourceNotWritable() if _not_writable(exc) else SourceUnavailable(exc)) from None
+        finally:
+            conn.close()

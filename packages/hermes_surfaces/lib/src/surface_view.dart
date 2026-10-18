@@ -14,6 +14,7 @@ import 'bundle_store.dart';
 import 'file_bridge.dart';
 import 'hardening.dart';
 import 'host.dart';
+import 'mutation_bridge.dart';
 import 'network_sink.dart';
 import 'origin.dart';
 import 'strings.dart';
@@ -141,6 +142,7 @@ class _SurfaceViewState extends State<SurfaceView> with WidgetsBindingObserver {
     preview: widget.preview != null,
     timezone: () => _timezone,
   );
+  late final MutationBridge _mutations = MutationBridge(preview: widget.preview != null, timezone: () => _timezone);
   Future<void>? _updating;
   bool _backPending = false;
   String? _decisionError;
@@ -540,6 +542,10 @@ class _SurfaceViewState extends State<SurfaceView> with WidgetsBindingObserver {
         // Native steps (a picker, a sheet, a confirmation) need a live screen showing THIS page.
         if (!_currentDocument(generation, document) || !mounted) throw HostError('closed', 'The page is closed');
         return _files.handle(req, host: widget.host, app: app, title: widget.title, context: context);
+      case 'mutate':
+        // May ask the user first, so it too needs a live screen showing THIS page.
+        if (!_currentDocument(generation, document) || !mounted) throw HostError('closed', 'The page is closed');
+        return _mutations.handle(req, host: widget.host, app: app, title: widget.title, context: context);
     }
     throw HostError('unknown_op', req.op);
   }

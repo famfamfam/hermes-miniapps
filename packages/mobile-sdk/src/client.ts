@@ -1,3 +1,4 @@
+import { DATA_CHANGED_EVENT } from "./events";
 import { hostAvailable, hostTransport } from "./transport";
 import type {
   FileAction,
@@ -6,6 +7,7 @@ import type {
   GroupResult,
   HelloReply,
   HostState,
+  MutationResult,
   QueryCall,
   QueryResult,
   Rpc,
@@ -77,6 +79,24 @@ export const hermes = {
    */
   async askHermes(prompt: string, fileIds: string[] = []): Promise<{ sent: boolean }> {
     return (await current().call({ op: "askHermes", prompt, fileIds })) as { sent: boolean };
+  },
+
+  /**
+   * A button that writes: runs one of the app's mutations from definitions.json (`name`, typed `args`, e.g.
+   * `mutate("mark_paid", { id: 42 })`). The page sends no SQL: the server runs the SQL that was reviewed and signed
+   * with the app. The phone asks the user first when the mutation deletes (or the author asked for it), and it
+   * never saves while offline or in a preview. On success the queries on screen are read again.
+   *
+   * Rejects with `code`: offline (nothing was saved), unknown_outcome (no answer: it may or may not have been saved;
+   * calling again with the same arguments is safe, the server will not apply it twice), busy (the same call is already
+   * running), too_many_requests, stale_revision (the app was updated: it reloads), unknown_mutation, rejected (the
+   * server refused these values: the message says why), preview_blocked, unauthorized, server_old, server_error.
+   */
+  async mutate(name: string, args?: QueryCall["args"]): Promise<MutationResult> {
+    const rpc: Rpc = { op: "mutate", name, ...(args ? { args } : {}) };
+    const out = (await current().call(rpc)) as MutationResult;
+    if (out.done) window.dispatchEvent(new Event(DATA_CHANGED_EVENT));
+    return out;
   },
 
   /** The files kept for this app, newest first. */

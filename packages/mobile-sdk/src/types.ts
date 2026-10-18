@@ -64,6 +64,15 @@ export type FileAction = "saved" | "opened" | "shared" | "cancelled";
 /** Where a download comes from: a stored file of this app, or a file locator of definitions.json with its arguments. */
 export type FileSource = { fileId: string } | { name: string; args?: QueryCall["args"] };
 
+/**
+ * What a button that writes comes back with. `done: false` means the user declined the confirmation the phone showed
+ * (nothing was changed). `replayed: true` means the server had already done this exact request and only repeated its
+ * answer (a retry after a lost reply).
+ */
+export type MutationResult =
+  | { done: false }
+  | { done: true; rowsAffected: number; lastInsertId: number | null; replayed: boolean };
+
 export type Rpc =
   | { op: "hello" }
   | { op: "hostState" }
@@ -72,7 +81,8 @@ export type Rpc =
   | { op: "listFiles" }
   | { op: "deleteFile"; fileId: string }
   | ({ op: "saveFile" } & FileSource)
-  | { op: "askHermes"; prompt: string; fileIds?: string[] };
+  | { op: "askHermes"; prompt: string; fileIds?: string[] }
+  | { op: "mutate"; name: string; args?: QueryCall["args"] };
 
 export interface Transport {
   call(rpc: Rpc): Promise<unknown>;

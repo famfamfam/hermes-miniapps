@@ -65,8 +65,11 @@ one transaction. Every write bumps the app's data revision and notifies open scr
 are shortened in read results: look at the shape of the data, do not copy documents into the chat.
 
 Linked apps (`linked: true` in app_list) read a database that another service owns, for example an
-existing skill's receipts. They are read-only: write/schema modes and mutations are refused, and the
-owning service keeps writing to its file. Use data_read to explore their tables
+existing skill's receipts. They are read-only for you: data_sql write/schema modes are refused, and so are
+mutations, unless the administrator switched writing on for that app (`writable: true` in app_list); then only
+its reviewed mutations, never data_sql, may change that file. The owning service does not know about such a change,
+so keep to simple, safe ones (a status flag) and say in your report which rows a button changes. The owning
+service keeps writing to its file. Use data_read to explore their tables
 (SELECT name, sql FROM sqlite_master). Their money columns may be REAL rubles: convert in the query,
 e.g. CAST(ROUND(amount * 100) AS INTEGER), so the interface still receives integer kopecks.
 
@@ -78,8 +81,10 @@ needs cleaning, say so to the user, because the fix belongs in the skill that wr
 
 A named query is {"sql": "...", "params": {"name": {"type": "string|integer|number|boolean|date|datetime|enum", "nullable": true}}, "shape": "rows|row|value", "maxRows": 200}.
 Parameters are declared by name and must appear in the SQL as :name. :now, :today and :device_id are
-provided by the server and must not be declared. A mutation is {"sql": "...", "params": {...}} and
-must change a table; statements that can delete rows (DELETE, REPLACE INTO, INSERT OR REPLACE, UPDATE OR
+provided by the server and must not be declared. A mutation is {"sql": "...", "params": {...}, "label": "...", "confirm": true} (label and confirm are
+optional) or, for changes that must succeed together, {"statements": ["...", "..."], ...} with 2-5 statements run in
+one transaction. It must change a table; every statement can use the params and :now/:today/:device_id. label is
+what the phone's confirmation window says (1-60 characters, in the language of the user); statements that can delete rows (DELETE, REPLACE INTO, INSERT OR REPLACE, UPDATE OR
 REPLACE, or a table declared ON CONFLICT REPLACE) are marked destructive and always confirmed by the user.
 """
 
@@ -112,13 +117,34 @@ Code rules (the build refuses the others):
 - no fetch/XMLHttpRequest/WebSocket/eval/localStorage/external URLs/fonts, and no images except stored
   pictures through hermes.fileUrl (see Files); navigation is by hash (href="#/path") with routes listed
   in src/App.tsx.
-- the phone cannot write yet: do not add buttons that look like they save or mark something.
+- a button that saves, marks or deletes must be a real mutation (see Buttons): never one that only looks like it saves.
 - put <DataMeta state={state} /> at the bottom of every screen that reads data.
 
 Kit in src/components.tsx: Tile({label,value,tone?}), BarChart({rows:[{month:"2026-09",total}]}),
-Chips({label,options:[{label,value}],value,onChange}), ListCard({title,subtitle,amount,badge}),
+Chips({label,options:[{label,value}],value,onChange}), ListCard({title,subtitle,amount,badge,actions?}),
 DataMeta({state}), FilePicker({label,accept?,onPicked}), DownloadButton({label,source}),
-FileThumb({file}). Reuse them; add new components to the same file rather than new libraries.
+FileThumb({file}), ActionButton({label,mutation,args?,onDone?,tone?}). Reuse them; add new components to the same
+file rather than new libraries.
+
+Buttons. Choose the kind by what the button has to do:
+- Change rows of the app's own database (save a form, mark as paid, rename, delete): a MUTATION. Declare it in
+  definitions.json under "mutations", e.g. {"mark_paid": {"sql": "UPDATE bills SET status = 'paid' WHERE id = :id",
+  "params": {"id": {"type": "integer"}}, "label": "Mark the bill as paid"}} (a form adds a row the same way:
+  INSERT with :name parameters; money typed by the user goes through toMinor() from "./format"). On the screen:
+  <ActionButton label="Mark paid" mutation="mark_paid" args={{ id: b.id }} /> or the hook const save =
+  useMutation("mark_paid"); save.run({ id }) -> { done, rowsAffected, lastInsertId } with save.pending and
+  save.error (it never throws). It is instant and uses no model. The page sends only the name and typed arguments,
+  never SQL: the server runs the SQL you wrote and the user approved. The phone asks the user before anything that
+  deletes by itself ("confirm": true asks before the others). After a save the queries on screen read again. A
+  repeat of one tap (a lost answer) never writes twice. Only a published app saves: in a preview a save button says
+  that saving is off.
+- The work needs thinking, a skill, a program or the web (generate a picture, read a PDF, run a script, write to the
+  database of another skill): hermes.askHermes(prompt, fileIds), see Files. The user reads the text and sends it;
+  Hermes, usually a sub-agent, then does the work, including writing and running a script. Say in the prompt
+  exactly what to run, with which values and files, and where the result goes (a linked folder + file_import, or
+  rows), so that nothing is left to guess.
+- A button that runs a script of its own on the server, without a model, does not exist yet (planned). Do not
+  promise one; use askHermes for that and word the prompt as an instruction to run the script.
 
 Files. The phone moves them; the page never sees bytes, paths or addresses.
 - Download (e.g. a receipt's PDF): declare a locator in definitions.json under "files":

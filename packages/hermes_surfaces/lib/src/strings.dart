@@ -237,6 +237,22 @@ enum SurfacesText {
   askSend,
   askSendFailed,
   askUnsupported,
+
+  // -- Buttons that write into the app's data, started by the page --------------------------------------------
+  mutatePreviewBlocked,
+  mutateBusy,
+  mutateTooMany,
+  mutateOffline,
+  mutateUnknownOutcome,
+  mutateServerOld,
+  mutateUnknown,
+  mutateServerError,
+  mutateConfirmTitle,
+  mutateConfirmBody,
+  mutateConfirmAction,
+  mutateDeleteTitle,
+  mutateDeleteBody,
+  mutateDeleteAction,
 }
 
 /// Resolved strings for one language. Obtain with [SurfacesStrings.of] (widgets) or
@@ -513,6 +529,21 @@ const Map<SurfacesText, String> _en = {
   SurfacesText.askSend: 'Send',
   SurfacesText.askSendFailed: 'Could not start the chat with Hermes.',
   SurfacesText.askUnsupported: 'This version of the app cannot send messages to Hermes.',
+  SurfacesText.mutatePreviewBlocked: 'Saving is switched off while an app is only being previewed.',
+  SurfacesText.mutateBusy: 'This is already being saved.',
+  SurfacesText.mutateTooMany: 'Too many changes in a short time. Wait a moment.',
+  SurfacesText.mutateOffline: 'No connection to Hermes. Nothing was saved.',
+  SurfacesText.mutateUnknownOutcome:
+      'No answer from Hermes. The change may or may not have been saved. Try again: it will not be applied twice.',
+  SurfacesText.mutateServerOld: 'This server cannot save changes from apps yet. Update the Mobile Surfaces plugin on it.',
+  SurfacesText.mutateUnknown: 'The server does not know this action. The app may need an update.',
+  SurfacesText.mutateServerError: 'The server could not save the change. Try again later.',
+  SurfacesText.mutateConfirmTitle: 'Confirm the change',
+  SurfacesText.mutateConfirmBody: 'The app “{app}” asks to: {label}',
+  SurfacesText.mutateConfirmAction: 'Confirm',
+  SurfacesText.mutateDeleteTitle: 'Delete data?',
+  SurfacesText.mutateDeleteBody: 'The app “{app}” asks to: {label}\n\nThis deletes data and cannot be undone.',
+  SurfacesText.mutateDeleteAction: 'Delete',
 };
 
 const Map<SurfacesText, String> _ru = {
@@ -740,6 +771,21 @@ const Map<SurfacesText, String> _ru = {
   SurfacesText.askSend: 'Отправить',
   SurfacesText.askSendFailed: 'Не удалось начать чат с Hermes.',
   SurfacesText.askUnsupported: 'Эта версия приложения не умеет отправлять сообщения Hermes.',
+  SurfacesText.mutatePreviewBlocked: 'Пока приложение только в предпросмотре, сохранение выключено.',
+  SurfacesText.mutateBusy: 'Это уже сохраняется.',
+  SurfacesText.mutateTooMany: 'Слишком много изменений за короткое время. Подождите немного.',
+  SurfacesText.mutateOffline: 'Нет связи с Hermes. Ничего не сохранено.',
+  SurfacesText.mutateUnknownOutcome:
+      'Нет ответа от Hermes. Изменение могло сохраниться, а могло и нет. Повторите: дважды оно не применится.',
+  SurfacesText.mutateServerOld: 'Этот сервер ещё не умеет сохранять изменения из приложений. Обновите на нём плагин Mobile Surfaces.',
+  SurfacesText.mutateUnknown: 'Сервер не знает такого действия. Возможно, приложению нужно обновление.',
+  SurfacesText.mutateServerError: 'Сервер не смог сохранить изменение. Попробуйте позже.',
+  SurfacesText.mutateConfirmTitle: 'Подтвердите изменение',
+  SurfacesText.mutateConfirmBody: 'Приложение «{app}» просит: {label}',
+  SurfacesText.mutateConfirmAction: 'Подтвердить',
+  SurfacesText.mutateDeleteTitle: 'Удалить данные?',
+  SurfacesText.mutateDeleteBody: 'Приложение «{app}» просит: {label}\n\nДанные будут удалены, отменить это нельзя.',
+  SurfacesText.mutateDeleteAction: 'Удалить',
   SurfacesText.codeFailed: 'Не удалось подключиться по этому коду.',
   SurfacesText.codeOrManual: 'или введите всё вручную',
 };

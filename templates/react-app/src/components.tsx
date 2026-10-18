@@ -1,6 +1,6 @@
-import { useState } from "react";
-import { hermes } from "@hermes/mobile-sdk";
-import type { FileInfo, FileSource, GroupState } from "@hermes/mobile-sdk";
+import { useState, type ReactNode } from "react";
+import { hermes, useMutation } from "@hermes/mobile-sdk";
+import type { FileInfo, FileSource, GroupState, MutationResult, QueryCall } from "@hermes/mobile-sdk";
 import { monthLabel, money, timeLabel, tr } from "./format";
 
 export interface MonthRow {
@@ -46,17 +46,19 @@ export function Chips<T extends string>({
   );
 }
 
-/** One row of a list: title and subtitle on the left, amount and an optional badge on the right. */
+/** One row of a list: title and subtitle on the left (with `actions`, e.g. ActionButtons), amount and an optional badge on the right. */
 export function ListCard({
   title,
   subtitle,
   amount,
   badge,
+  actions,
 }: {
   title: string;
   subtitle?: string;
   amount?: string;
   badge?: { text: string; tone?: "ok" | "warn" | "danger" };
+  actions?: ReactNode;
 }) {
   const toneClass = badge?.tone === "ok" ? "badge-paid" : badge?.tone === "danger" ? "badge-overdue" : "badge-unpaid";
   return (
@@ -64,6 +66,7 @@ export function ListCard({
       <div>
         <div className="card-title">{title}</div>
         {subtitle && <div className="muted">{subtitle}</div>}
+        {actions && <div className="card-actions">{actions}</div>}
       </div>
       <div className="card-side">
         {amount && <div className="card-amount">{amount}</div>}
@@ -192,6 +195,45 @@ export function DownloadButton({ label, source }: { label: string; source: FileS
         <span className="error" role="alert">
           {" "}
           {error}
+        </span>
+      )}
+    </span>
+  );
+}
+
+/**
+ * A button that writes: runs a mutation of definitions.json by name (see `useMutation`). The phone asks the user first
+ * when the mutation deletes, and the lists on screen are read again once it is saved. `onDone` runs only when the change
+ * was saved, not when the user declined. A failure is shown in the user's language as the host worded it.
+ */
+export function ActionButton({
+  label,
+  mutation,
+  args,
+  onDone,
+  tone,
+}: {
+  label: string;
+  mutation: string;
+  args?: QueryCall["args"];
+  onDone?: (result: Extract<MutationResult, { done: true }>) => void;
+  tone?: "danger";
+}) {
+  const action = useMutation(mutation);
+  const run = () => {
+    void action.run(args).then((result) => {
+      if (result?.done) onDone?.(result);
+    });
+  };
+  return (
+    <span className="file-action">
+      <button type="button" className={`link${tone === "danger" ? " link-danger" : ""}`} onClick={run} disabled={action.pending}>
+        {action.pending ? tr("Сохранение…", "Saving…") : label}
+      </button>
+      {action.error && (
+        <span className="error" role="alert">
+          {" "}
+          {action.error.message}
         </span>
       )}
     </span>

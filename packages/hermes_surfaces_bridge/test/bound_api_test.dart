@@ -78,6 +78,19 @@ class _Recording extends SurfacesApi {
   @override
   Future<void> deleteFile(String appId, String fileId) async =>
       calls.add('deleteFile $appId $fileId');
+
+  @override
+  Future<Map<String, dynamic>> mutate(
+    String appId,
+    int revision,
+    String name,
+    Map<String, dynamic> args, {
+    required String key,
+    required String timezone,
+  }) async {
+    calls.add('mutate $appId $revision $name $args $key $timezone');
+    return {'rowsAffected': 1, 'replayed': false};
+  }
 }
 
 class _Dead extends http.BaseClient {
@@ -127,6 +140,40 @@ void main() {
       ]);
     },
   );
+
+  test('a button that writes goes through to the real API, with its key', () async {
+    final out = await bound.mutate(
+      'utilities',
+      7,
+      'mark_paid',
+      {'id': 2},
+      key: 'k' * 20,
+      timezone: 'UTC',
+    );
+    expect(out, {'rowsAffected': 1, 'replayed': false});
+    expect(inner.calls, ['mutate utilities 7 mark_paid {id: 2} ${'k' * 20} UTC']);
+  });
+
+  test('a preview API refuses to save, even through the bound one', () async {
+    final boundPreview = bindApi(_PreviewRecording(), () => true);
+    await expectLater(
+      boundPreview.mutate('utilities', 7, 'mark_paid', {
+        'id': 2,
+      }, key: 'k' * 20, timezone: 'UTC'),
+      throwsA(isA<ApiException>().having((e) => e.status, 'status', 403)),
+    );
+  });
+
+  test('once the connection is no longer current, nothing is saved', () async {
+    active = false;
+    await expectLater(
+      bound.mutate('utilities', 7, 'mark_paid', {
+        'id': 2,
+      }, key: 'k' * 20, timezone: 'UTC'),
+      throwsA(isA<OfflineException>()),
+    );
+    expect(inner.calls, isEmpty);
+  });
 
   test('the same holds for a preview API, which stays a preview API', () async {
     final preview = _PreviewRecording();

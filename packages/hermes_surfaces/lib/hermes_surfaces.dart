@@ -8,6 +8,7 @@ export 'src/bundle_store.dart';
 export 'src/bundle_verify.dart';
 export 'src/file_bridge.dart';
 export 'src/host.dart';
+export 'src/mutation_bridge.dart';
 export 'src/network_sink.dart';
 export 'src/origin.dart';
 export 'src/pairing.dart';

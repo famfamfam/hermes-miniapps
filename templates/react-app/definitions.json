@@ -25,13 +25,25 @@
     }
   },
   "mutations": {
+    "add_bill": {
+      "sql": "INSERT INTO bills(supplier, period, amount, status) VALUES (:supplier, :period, :amount, :status)",
+      "params": {
+        "supplier": { "type": "string" },
+        "period": { "type": "date" },
+        "amount": { "type": "integer" },
+        "status": { "type": "enum", "values": ["paid", "unpaid"] }
+      },
+      "label": "Add a bill"
+    },
     "mark_paid": {
       "sql": "UPDATE bills SET status = 'paid' WHERE id = :id",
-      "params": { "id": { "type": "integer" } }
+      "params": { "id": { "type": "integer" } },
+      "label": "Mark the bill as paid"
     },
     "delete_bill": {
       "sql": "DELETE FROM bills WHERE id = :id",
-      "params": { "id": { "type": "integer" } }
+      "params": { "id": { "type": "integer" } },
+      "label": "Delete the bill"
     }
   }
 }

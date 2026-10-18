@@ -19,7 +19,7 @@ const CALL_TIMEOUT_MS = 20_000;
  * Twenty seconds would reject them while the phone is still doing what was asked.
  */
 const LONG_CALL_TIMEOUT_MS = 10 * 60_000;
-const LONG_OPS = new Set(["pickFile", "saveFile", "deleteFile", "askHermes"]);
+const LONG_OPS = new Set(["pickFile", "saveFile", "deleteFile", "askHermes", "mutate"]);
 
 type Pending = {
   resolve(value: unknown): void;

@@ -7,6 +7,8 @@ class StoreError(Exception):
     """Operation refused; message is safe to return to the caller."""
 
     status = 400
+    # A stable word the phone can act on when the status alone is ambiguous (several kinds of 409).
+    code: str | None = None
 
 
 class NotFound(StoreError):
@@ -15,6 +17,18 @@ class NotFound(StoreError):
 
 class Conflict(StoreError):
     status = 409
+
+
+class RequestKeyReused(Conflict):
+    """A mutation key that was already used for a different request."""
+
+    code = "request_key_reused"
+
+
+class OutcomeUnknown(Conflict):
+    """An earlier attempt with this key may or may not have changed the data; trying again could write twice."""
+
+    code = "outcome_unknown"
 
 
 class ApprovalRefused(StoreError):

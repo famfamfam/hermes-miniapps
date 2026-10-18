@@ -398,6 +398,37 @@ void main() {
     expect(calls, hasLength(2));
     expect(calls.last, contains('"id":19'));
   });
+
+  testWidgets('the API a page works through really reaches the server for a button that writes', (tester) async {
+    final server = SyntheticServer();
+    final calls = <String>[];
+    final bridge = fixture(tester, connection(), (req, c) {
+      if (req.url.path.endsWith('/apps/utilities/mutations/mark_paid')) {
+        calls.add('${req.method} ${req.headers['Authorization']} ${req.body}');
+        return jsonResponse({'revision': 3, 'dataRev': 9, 'rowsAffected': 1, 'lastInsertId': null, 'replayed': false});
+      }
+      return server.respond(req, c);
+    });
+    SurfacePageRequest? page;
+    await mount(
+      tester,
+      bridge,
+      pageBuilder: (_, request) {
+        page = request;
+        return FakePage(request: request);
+      },
+    );
+    await open(tester, 'Synthetic app');
+    final out = await tester.runAsync(
+      () => page!.host.api.mutate('utilities', 3, 'mark_paid', {'id': 2}, key: 'k' * 20, timezone: 'UTC'),
+    );
+    expect(out!['rowsAffected'], 1);
+    expect(calls, hasLength(1));
+    expect(calls.single, startsWith('POST Bearer '));
+    expect(calls.single, contains('"idempotencyKey":"${'k' * 20}"'));
+    expect(calls.single, contains('"args":{"id":2}'));
+  });
+
   testWidgets('a host that offers neither leaves the page without both', (tester) async {
     final server = SyntheticServer();
     final bridge = fixture(tester, connection(), server.respond);

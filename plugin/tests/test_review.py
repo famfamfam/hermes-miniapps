@@ -106,6 +106,56 @@ def test_preview_serves_the_draft_bundle_and_runs_its_queries(env):
         auth.review_bundle_path("items_app", "sha256:" + "0" * 64)
 
 
+def test_the_preview_tells_the_phone_which_buttons_write_without_the_sql(env, monkeypatch):
+    store, auth = env
+    monkeypatch.setitem(DEFS, "mutations", {
+        "set_amount": {"sql": "UPDATE items SET amount = :amount WHERE id = :id", "label": "Change the amount",
+                       "params": {"id": {"type": "integer"}, "amount": {"type": "integer"}}},
+        "drop": {"sql": "DELETE FROM items WHERE id = :id", "params": {"id": {"type": "integer"}}, "confirm": True},
+    })
+    store.register_approver("phone1", Phone().public)
+    fake_build(auth)
+    auth.publish("items_app")
+
+    manifest = auth.review_manifest("items_app")
+
+    assert manifest["mutations"] == {
+        "set_amount": {"params": {"id": {"type": "integer"}, "amount": {"type": "integer"}}, "destructive": False,
+                       "label": "Change the amount"},
+        "drop": {"params": {"id": {"type": "integer"}}, "destructive": True, "confirm": True},
+    }
+    assert "UPDATE" not in json.dumps(manifest) and "DELETE" not in json.dumps(manifest)
+
+
+def test_an_app_with_buttons_that_write_can_be_approved_and_its_buttons_then_work(env, monkeypatch):
+    # Approval publishes the saved review, whose contract is the NORMALISED one (it carries `destructive`, computed
+    # from the SQL); publishing validates it again, so validation has to accept its own output.
+    store, auth = env
+    monkeypatch.setitem(DEFS, "mutations", {
+        "set_amount": {"sql": "UPDATE items SET amount = :amount WHERE id = :id", "label": "Change the amount",
+                       "params": {"id": {"type": "integer"}, "amount": {"type": "integer"}}},
+        "drop": {"sql": "DELETE FROM items WHERE id = :id", "params": {"id": {"type": "integer"}}, "confirm": True},
+        "bump_and_log": {"statements": ["UPDATE items SET amount = amount + 1 WHERE id = :id",
+                                        "INSERT INTO items(title, amount) VALUES ('log', 1)"],
+                         "params": {"id": {"type": "integer"}}, "label": "Bump and log"},
+    })
+    phone = Phone()
+    store.register_approver("phone1", phone.public)
+    fake_build(auth)
+    auth.publish("items_app")
+
+    out = auth.approve("items_app", **ask_and_sign(auth, phone))
+
+    assert out["status"] == "published" and out["revision"] == 1
+    published = json.loads(store._row("items_app")["definitions"])
+    assert [published["mutations"][n]["destructive"] for n in ("set_amount", "drop", "bump_and_log")] == [False, True, False]
+    assert store.validate_definitions("items_app", published) == published  # validation accepts its own output
+    key = lambda n: f"approved-key-{n:08d}"
+    assert store.run_mutation("items_app", 1, "set_amount", {"id": 1, "amount": 5}, key=key(1), device_id="t", tz_name=None)["rowsAffected"] == 1
+    assert store.run_mutation("items_app", 1, "bump_and_log", {"id": 2}, key=key(2), device_id="t", tz_name=None)["rowsAffected"] == 2
+    assert store.run_mutation("items_app", 1, "drop", {"id": 1}, key=key(3), device_id="t", tz_name=None)["rowsAffected"] == 1
+
+
 def test_a_valid_signature_publishes_exactly_the_reviewed_build(env):
     store, auth = env
     phone = Phone()

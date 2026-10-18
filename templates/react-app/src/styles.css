@@ -263,3 +263,20 @@ h2 {
   font-weight: 700;
   min-height: 48px;
 }
+
+.card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-top: 6px;
+}
+
+.link-danger {
+  color: #b91c1c;
+}
+
+@media (prefers-color-scheme: dark) {
+  .link-danger {
+    color: #f87171;
+  }
+}

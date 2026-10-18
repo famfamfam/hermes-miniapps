@@ -48,6 +48,23 @@ void main() {
         const PickerFilter(FileType.custom, ['csv', 'txt']),
       );
     });
+
+    test('a spreadsheet picker offers spreadsheets, whichever way it asks', () {
+      expect(
+        pickerFilterFor(const [
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ]),
+        const PickerFilter(FileType.custom, ['xlsx']),
+      );
+      expect(
+        pickerFilterFor(const [
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'application/vnd.ms-excel',
+          '.csv',
+        ]),
+        const PickerFilter(FileType.custom, ['csv', 'xls', 'xlsx']),
+      );
+    });
   });
 
   group('pick', () {

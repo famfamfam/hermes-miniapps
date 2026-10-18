@@ -110,9 +110,13 @@ class OfflineException implements Exception {
 }
 
 class ApiException implements Exception {
-  ApiException(this.status, this.message);
+  ApiException(this.status, this.message, [this.code]);
   final int status;
   final String message;
+
+  /// A stable word from the server where the status alone is ambiguous (several kinds of 409):
+  /// `request_key_reused`, `outcome_unknown`. Null for a plain status.
+  final String? code;
   bool get isUnauthorized => status == 401 || status == 403;
   bool get isStale => status == 409;
   @override
@@ -141,6 +145,18 @@ class ManifestException implements Exception {
   final String message;
   @override
   String toString() => 'ManifestException: $message';
+}
+
+/// A button of an app that writes into its data, as the server's manifest describes it.
+class MutationInfo {
+  const MutationInfo({required this.destructive, required this.confirm, this.label});
+
+  /// It deletes data: the user is always asked first.
+  final bool destructive;
+
+  /// The author asked for a confirmation even though nothing is deleted.
+  final bool confirm;
+  final String? label;
 }
 
 class AppManifest {
@@ -186,6 +202,20 @@ class AppManifest {
       }
     }
     return AppManifest._(json, preview);
+  }
+
+  /// What the server says about one of this app's buttons that write (never its SQL). Null for a name it does not
+  /// list. The words shown to the user come from here, not from the page.
+  MutationInfo? mutation(String name) {
+    final all = raw['mutations'];
+    final m = all is Map ? all[name] : null;
+    if (m is! Map) return null;
+    final label = m['label'];
+    return MutationInfo(
+      destructive: m['destructive'] == true,
+      confirm: m['confirm'] == true,
+      label: label is String && label.trim().isNotEmpty && label.length <= 60 ? label.trim() : null,
+    );
   }
 
   String get appId => raw['appId'] as String;
@@ -258,12 +288,16 @@ class SurfacesApi {
     }
     if (res.statusCode >= 400) {
       var message = res.reasonPhrase ?? 'HTTP ${res.statusCode}';
+      String? code;
       try {
         final body = jsonDecode(utf8.decode(res.bodyBytes));
         if (body is Map && body['error'] is String) message = body['error'] as String;
         if (body is Map && body['detail'] is String) message = body['detail'] as String;
+        if (body is Map && body['code'] is String && RegExp(r'^[a-z_]{1,40}$').hasMatch(body['code'] as String)) {
+          code = body['code'] as String;
+        }
       } catch (_) {}
-      throw ApiException(res.statusCode, message);
+      throw ApiException(res.statusCode, message, code);
     }
     return res;
   }
@@ -459,6 +493,30 @@ class SurfacesApi {
     await _send('DELETE', '/apps/$appId/files/$fileId');
   }
 
+  // -- buttons that write (ADR-004 §2-3) --------------------------------------------------------------------------
+
+  /// One tap on a button that writes: the app's reviewed mutation [name] with typed [args], at [revision]. The server
+  /// runs the SQL it reviewed, never anything the page sent. [key] makes a repeat of the same request (the answer was
+  /// lost on the way) change the data once; the caller makes it, one per user action. A lost answer
+  /// ([OfflineException]) leaves the outcome unknown, never "not done".
+  Future<Map<String, dynamic>> mutate(
+    String appId,
+    int revision,
+    String name,
+    Map<String, dynamic> args, {
+    required String key,
+    required String timezone,
+  }) async {
+    _checkAppId(appId);
+    final body = jsonEncode({
+      'revision': revision,
+      'timezone': timezone,
+      'idempotencyKey': key,
+      if (args.isNotEmpty) 'args': args,
+    });
+    return _json(await _send('POST', '/apps/$appId/mutations/${Uri.encodeComponent(name)}', body: body));
+  }
+
   void _checkAppId(String appId) {
     if (!isValidAppId(appId)) throw ManifestException('not a valid app id');
   }
@@ -614,4 +672,10 @@ class PreviewApi extends SurfacesApi {
 
   @override
   Future<void> deleteFile(String appId, String fileId) async => throw _noFiles;
+
+  // Nor does it save: a preview never changes data, whatever the page asks.
+  @override
+  Future<Map<String, dynamic>> mutate(String appId, int revision, String name, Map<String, dynamic> args,
+          {required String key, required String timezone}) async =>
+      throw ApiException(403, 'saving is not available in a preview');
 }

@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { useQueryGroup } from "@hermes/mobile-sdk";
-import { BarChart, DataMeta, Tile, type MonthRow } from "./components";
-import { money, periodLabel } from "./format";
+import { useMutation, useQueryGroup } from "@hermes/mobile-sdk";
+import { ActionButton, BarChart, DataMeta, Tile, type MonthRow } from "./components";
+import { money, periodLabel, toMinor } from "./format";
 
 interface Bill {
   id: number;
@@ -69,6 +69,10 @@ export function Bills() {
             <div>
               <div className="card-title">{b.supplier}</div>
               <div className="muted">{periodLabel(b.period)}</div>
+              <div className="card-actions">
+                {b.status === "unpaid" && <ActionButton label="Mark paid" mutation="mark_paid" args={{ id: b.id }} />}
+                <ActionButton label="Delete" mutation="delete_bill" args={{ id: b.id }} tone="danger" />
+              </div>
             </div>
             <div className="card-side">
               <div className="card-amount">{money(b.amount)}</div>
@@ -83,23 +87,33 @@ export function Bills() {
   );
 }
 
-/** Local-only form: exercises keyboard/viewport behaviour. Writing from the app is Stage 4. */
+/** A form that saves: the "add_bill" mutation of definitions.json. The phone writes it to the app's own database. */
 export function AddBill() {
   const [supplier, setSupplier] = useState("");
   const [period, setPeriod] = useState("");
   const [amount, setAmount] = useState("");
   const [status, setStatus] = useState("unpaid");
-  const [note, setNote] = useState("");
+  const [saved, setSaved] = useState(false);
+  const save = useMutation("add_bill");
+  const minor = toMinor(amount);
+  const ready = supplier.trim() !== "" && period !== "" && minor !== null && minor > 0;
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaved(false);
+    void save.run({ supplier: supplier.trim(), period, amount: minor, status }).then((result) => {
+      if (!result?.done) return; // failed (shown below) or declined: keep what was typed
+      setSaved(true);
+      setSupplier("");
+      setPeriod("");
+      setAmount("");
+    });
+  };
+
   return (
     <section>
       <h1>New bill</h1>
-      <form
-        className="form"
-        onSubmit={(e) => {
-          e.preventDefault();
-          setNote("Saving from the app is not available yet. For now, add bills by chatting with Hermes.");
-        }}
-      >
+      <form className="form" onSubmit={submit}>
         <label>
           Supplier
           <input value={supplier} onChange={(e) => setSupplier(e.target.value)} autoComplete="off" />
@@ -124,16 +138,17 @@ export function AddBill() {
             <option value="paid">Paid</option>
           </select>
         </label>
-        <label>
-          Comment
-          <textarea rows={3} />
-        </label>
-        <button type="submit" className="primary">
-          Save
+        <button type="submit" className="primary" disabled={!ready || save.pending}>
+          {save.pending ? "Saving…" : "Save"}
         </button>
-        {note && (
+        {save.error && (
+          <p className="error" role="alert">
+            {save.error.message}
+          </p>
+        )}
+        {saved && (
           <p className="muted" role="status">
-            {note}
+            Saved. It is in the Bills list.
           </p>
         )}
       </form>

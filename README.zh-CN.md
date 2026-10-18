@@ -10,11 +10,11 @@
 应用、切换筛选都不会产生 LLM 请求；只有创建或修改应用时才会用到模型。在你于手机上看过预览，并用手机上生成的签名确认之前，
 任何内容都不会上线。
 
-| 概览 | 账单 | 新建账单 |
+| 聊天 | 应用 | 应用内部 |
 |:---:|:---:|:---:|
-| ![概览](screenshots/miniapp-overview.png) | ![账单](screenshots/miniapp-bills.png) | ![新建账单](screenshots/miniapp-new-bill.png) |
+| ![聊天](screenshots/app-chats.png) | ![应用](screenshots/app-apps.png) | ![应用内部](screenshots/app-miniapp.png) |
 
-*示例小应用（`react-app` 模板，数据为虚构）。Hermes 会根据你在聊天中的请求生成这样的界面。*
+*使用虚构数据的应用：聊天列表、小应用列表，以及一个小应用（`react-app` 模板）。Hermes 会根据你在聊天中的请求生成像最后一个这样的界面。*
 
 - **聊天**：通过 Hermes 官方 Gateway API 与 Hermes 对话，支持流式回复、会话、语音、附件，回答完成时会发通知。
 - **应用（Apps）**：你的小应用目录，可批准或拒绝预览，可删除应用（在服务器的回收站里保留 30 天），离线副本会自动保持最新。
@@ -209,6 +209,8 @@ umask 077 && printf 'MOBILE_SURFACES_MCP_TOKEN=%s\n' "$(sudo cat /etc/hermes-sur
 然后发布或拒绝。要修改也同样对它说。要删除应用，用 ⋮ → Delete app：它会进入服务器回收站 30 天
 （`ms_admin trash`、`ms_admin restore-app <name>`）。
 
+保存、标记或删除的按钮无需模型：Hermes 把每个按钮声明为对应用自身数据库的一项具名修改，你连同应用一起批准它，凡是会删除数据的操作都会在手机上再次询问你。如果按钮需要智能体亲自出手（生成图片、读取 PDF），它会向 Hermes 发送一条消息，由你阅读并自己发送。
+
 ## 升级与卸载
 
 ```sh
@@ -249,6 +251,7 @@ sudo python3 tools/install/install.py uninstall --purge --yes
 - 应用页面运行在网络被封闭的 WebView 里：它不能自己发起请求，只能向应用索取命名查询。作者读取的数据会发送给你的模型提供商。
 - 第一部配对的手机成为审批设备（首次使用即信任）。连接代码只能使用一次，有效期 15 分钟，并且只以摘要形式保存。删除应用是对一条
   单独的消息签名，所以发布签名不能用来删除任何东西，反过来也一样。
+- 按钮只能运行与应用一起审核并签名的具名修改；页面不会发送 SQL。基于其他技能数据库的应用保持只读，直到管理员运行 `ms_admin allow-writes <app>`（还需要允许服务写入该文件及其所在文件夹）；拥有该文件的技能并不知道这些修改。
 
 已知的未解决问题以及如何报告漏洞，见 [SECURITY.md](SECURITY.md)。
 

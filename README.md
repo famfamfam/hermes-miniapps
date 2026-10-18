@@ -11,11 +11,11 @@ real data, and you refine it by talking to Hermes again. Opening an app and swit
 model is used only when an app is created or changed. Nothing goes live until you have seen a preview on the phone and
 approved it with a signature made on the phone.
 
-| Overview | Bills | New bill |
+| Chats | Apps | Inside an app |
 |:---:|:---:|:---:|
-| ![Overview](screenshots/miniapp-overview.png) | ![Bills](screenshots/miniapp-bills.png) | ![New bill](screenshots/miniapp-new-bill.png) |
+| ![Chats](screenshots/app-chats.png) | ![Apps](screenshots/app-apps.png) | ![Inside an app](screenshots/app-miniapp.png) |
 
-*The sample mini-app (the `react-app` template, with made-up data). Hermes builds screens like these from a request in chat.*
+*The app with made-up data: the chat list, the list of mini-apps, and a mini-app (the `react-app` template). Hermes builds screens like the last one from a request in chat.*
 
 - **Chat** with Hermes through its official Gateway API: streaming, sessions, voice, attachments, a notification when an
   answer is ready.
@@ -225,6 +225,10 @@ Ask Hermes in chat: "Make a screen for my monthly expenses". When the build is d
 for your decision**: open it on real data, then publish or reject. Ask for changes the same way. To delete an app use ⋮ →
 Delete app: it moves to the server's trash for 30 days (`ms_admin trash`, `ms_admin restore-app <name>`).
 
+Buttons that save, mark or delete work without a model: Hermes declares each one as a named change to the app's own
+database, you approve it together with the app, and anything that deletes asks you again on the phone. When a button needs
+the agent itself (generate a picture, read a PDF), it sends Hermes a message that you read and send yourself.
+
 ## Upgrade and uninstall
 
 ```sh
@@ -270,6 +274,9 @@ block and the `MOBILE_SURFACES_MCP_TOKEN` line yourself.
 - The first phone to pair becomes the approver (trust on first use). A connection code is single-use, lives 15 minutes and
   is stored only as a digest. Deleting an app is signed over a message of its own, so a publication signature cannot delete
   anything and the other way round.
+- A button can only run a named change that was reviewed and signed with the app; the page sends no SQL. An app over
+  another skill's database stays read-only until the administrator runs `ms_admin allow-writes <app>` (the service must
+  also be allowed to write that file and its folder); the skill that owns the file does not know about such changes.
 
 Known open items are listed in [SECURITY.md](SECURITY.md), together with how to report a vulnerability.
 

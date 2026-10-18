@@ -34,8 +34,9 @@ has the same `mcp__surfaces__*` tools and runs on the model configured for deleg
 2. Write the subagent a **complete** brief. It cannot see this chat. Include:
    - the app id, and whether it is new or an existing one to change;
    - what the user wants to see and do, in the user's words, and anything they said about layout;
-   - where the data comes from (which skill / table), and that the interface is **read-only**: the phone
-     cannot write yet, so no buttons that pretend to save;
+   - where the data comes from (which skill / table). An app over another skill's data (`linked: true`) is
+     **read-only** unless `writable: true` in `app_list`: then no button may write there except a mutation
+     you declare, and the user is told which rows it changes. Never a button that only pretends to save;
    - the working order: `reference` → `data_read` (the schema from `sqlite_master` and 3-5 sample rows,
      no more) → `definitions.json` → `app_check_definitions` → `app_edit` for each file →
      `app_build` (read the `file:line` errors, at most three fix cycles) → report;
@@ -57,7 +58,24 @@ has the same `mcp__surfaces__*` tools and runs on the model configured for deleg
 - Data reaches screens only through named queries in `definitions.json`; no network, no storage, no
   external URLs or fonts.
 - Use the kit in `src/components.tsx` (Tile, BarChart, Chips, ListCard, DataMeta, FilePicker,
-  DownloadButton, FileThumb) instead of new CSS.
+  DownloadButton, FileThumb, ActionButton) instead of new CSS.
+
+## Buttons that write
+
+Choose per button, and put the choice into the brief for the subagent (`reference` has the exact shapes):
+
+- **Changes rows of the app's own database** (save a form, mark as paid, delete): a **mutation** in
+  `definitions.json` (`sql` or `statements`, typed `params`, a `label` in the user's language) and an
+  `ActionButton` or `useMutation`. Instant, no model, no tokens. The phone asks before anything that deletes.
+  The page never sends SQL: only the name and arguments. Only a published app saves; in the preview the button
+  says saving is off, so describe in your report what each button does.
+- **Needs work by the agent or a program** (generate a picture, read a PDF, run a script, write into another
+  skill's database): `askHermes` with a prompt that says exactly what to run, with which values and files, and
+  where the result goes. A sub-agent then writes and runs the script. There is no separate script runner behind a
+  button yet (planned): do not promise one.
+- **An app over another skill's data** (`linked: true`) saves only when `writable: true`; otherwise use
+  `askHermes`. Only the administrator switches writing on (`ms_admin allow-writes`); do not run
+  it yourself, and never edit that database yourself.
 
 ## Files, uploads and "send to Hermes"
 
@@ -98,7 +116,8 @@ an obstacle:
   user uploaded: read the path `file_path` returns, and only that.)
 - Read data with `data_read` (it needs no approval), not with `sqlite3` or scripts in the terminal.
   The tool shortens long text columns on purpose.
-- Do not write to the skill's own database or files. The interface only reads them.
+- Do not write to the skill's own database or files yourself. A button may change them only through a mutation
+  of an app the administrator made writable.
 
 ## If something fails
 
