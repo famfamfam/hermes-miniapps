@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test(
-    'Build 0.1.0 has the exact release identity and an upgrade-safe code',
+    'Build 0.1.1 has the exact release identity and an upgrade-safe code',
     () {
       final pubspec = File('pubspec.yaml').readAsStringSync();
       final match = RegExp(
@@ -13,12 +13,12 @@ void main() {
       ).firstMatch(pubspec);
 
       expect(match, isNotNull);
-      expect(match!.group(1), '0.1.0');
-      expect(int.parse(match.group(2)!), 2160);
-      // Above the 2159 of the first build that was installed from this tree, so it updates in place.
-      expect(int.parse(match.group(2)!), greaterThan(2159));
+      expect(match!.group(1), '0.1.1');
+      expect(int.parse(match.group(2)!), 2163);
+      // Above the 2162 of the last build that was installed from this tree, so it updates in place.
+      expect(int.parse(match.group(2)!), greaterThan(2162));
       // F-Droid ABI split: packaged arm64 code is base * 10 + ABI code.
-      expect(int.parse(match.group(2)!) * 10 + 2, 21602);
+      expect(int.parse(match.group(2)!) * 10 + 2, 21632);
     },
   );
 

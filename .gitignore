@@ -38,3 +38,5 @@ key.properties
 # any copy or renamed copy of the signing properties (a build may move key.properties aside)
 key.properties*
 *.properties.off
+# private notes for AI agents
+AGENTS.md
