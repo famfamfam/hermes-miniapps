@@ -372,6 +372,22 @@ def test_a_file_the_service_may_not_write_gives_a_message_the_administrator_can_
         foreign.chmod(stat.S_IRUSR | stat.S_IWUSR)
 
 
+@pytest.mark.skipif(os.name == "nt" or (hasattr(os, "geteuid") and os.geteuid() == 0), reason="needs file modes that bind")
+def test_a_folder_the_service_may_not_write_is_found_when_the_app_is_checked(zhkh):
+    # SQLite creates its journal next to the file, so a writable file in a folder that is not writable is no use.
+    store, foreign, tmp_path = zhkh
+    store.set_source_writable("zhkh", True)
+    folder = foreign.parent
+    mode = folder.stat().st_mode
+    folder.chmod(stat.S_IRUSR | stat.S_IXUSR)
+    try:
+        with pytest.raises(StoreError, match="not allowed to write"):
+            store.validate_definitions("zhkh", LINKED_DEFS)
+    finally:
+        folder.chmod(mode)
+    store.validate_definitions("zhkh", LINKED_DEFS)  # and once the folder is writable again it is accepted
+
+
 @pytest.mark.parametrize(
     "text, expected",
     [("attempt to write a readonly database", True), ("unable to open database file", True),

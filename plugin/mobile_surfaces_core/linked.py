@@ -8,6 +8,7 @@ the data revision lives in the registry.
 """
 from __future__ import annotations
 
+import os
 import sqlite3
 from pathlib import Path
 from typing import Any, Callable
@@ -150,6 +151,12 @@ class LinkedDb:
 
     def probe_statement(self, sql: str, bindings: dict[str, Any], *, mode: str, shape_rows: int = 1) -> SqlResult:
         if mode == sandbox.WRITE and self.writable:
+            # Compiling a statement writes nothing, so SQLite accepts it on a file the service may not write (the
+            # error comes with the first real write). Ask the operating system instead, so that the author and the
+            # administrator learn it when the app is checked, not when someone taps a button. The folder counts too:
+            # SQLite creates its journal there. A read-only mount is refused by the same question.
+            if not (os.access(self.path, os.W_OK) and os.access(self.path.parent, os.W_OK)):
+                raise SourceNotWritable()
             # Compiled only (EXPLAIN) inside a transaction that is always rolled back, as for an own database.
             conn = self._open_for_writing()
             try:
