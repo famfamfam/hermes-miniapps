@@ -224,6 +224,48 @@ Hermes가 헤더의 `${...}`를 확장하지 않으면(401이 나옵니다) `--h
 
 저장하거나 표시하거나 삭제하는 버튼은 모델 없이 동작합니다. Hermes가 각 버튼을 앱 자체 데이터베이스에 대한 이름 있는 변경으로 선언하고, 사용자가 앱과 함께 승인하며, 삭제하는 동작은 휴대폰에서 한 번 더 확인을 받습니다. 버튼에 에이전트가 직접 필요하면(이미지 생성, PDF 읽기) Hermes에게 보낼 메시지를 만들고, 사용자가 읽은 뒤 직접 보냅니다.
 
+## 선택 사항: OneSignal 플랫폼 플러그인
+
+선택 사항인 송신 전용 플러그인은 OneSignal 구독 하나에 텍스트 푸시를 보낼 수 있습니다. Surfaces 서버와는 별개이며 기존 cron
+전송을 자동으로 복제하지 않습니다. 알림 텍스트는 OneSignal과 Firebase를 거칩니다. OneSignal이 수락했다고 전송이 보장되지는
+않습니다. 활성화하기 전에 플러그인 소스를 읽어 보세요. Hermes 플랫폼 플러그인은 gateway 사용자 권한으로 실행되며
+`plugins.isolation: in_process`가 필요합니다. 이 설치 관리자는 격리 설정을 바꾸지 않습니다. 특히 다른 플러그인에 미치는
+영향을 이해하고 동의하지 않았다면 기존 `host` 격리 설정을 바꾸지 마세요. 사용 중인 Hermes 버전과의 호환성은 직접 확인해야
+하며 설치 관리자는 Hermes API를 검사하지 않습니다.
+
+신뢰하고 검토한 체크아웃에서, 대상 Hermes gateway를 실행하는 **OS 사용자**로(`sudo`가 아닌) `PROFILE_HOME`을 해당 gateway의
+기존 절대 `HERMES_HOME`으로 지정하세요. 기본 프로필은 보통 `$HOME/.hermes`이고 이름 있는 프로필은 자체 홈을 사용합니다.
+gateway가 실제로 사용하는同一 프로필인지 확인한 뒤 실행하세요:
+
+```sh
+PROFILE_HOME="$HOME/.hermes"  # replace with the target profile's absolute home when needed
+python3 tools/install/onesignal.py plan --hermes-home "$PROFILE_HOME"
+python3 tools/install/onesignal.py apply --hermes-home "$PROFILE_HOME"
+```
+
+`plan`은 아무것도 기록하지 않습니다. 검토 후 `apply`는 플러그인을
+`$PROFILE_HOME/plugins/platforms/onesignal`로 복사하고, 값이 없을 때만 터미널에서 OneSignal app ID, API key,
+subscription ID를 비밀 입력으로 받습니다. 이 사용자 소유의 모드 0600으로 `$PROFILE_HOME/onesignal.json`을 만들며 기존의
+유효한 자격 증명은 유지합니다. 이 값들은 채팅, 명령줄 인수, 저장소에 붙여 넣지 마세요. 입력을 가릴 수 없는 터미널은 거부됩니다.
+설치 관리자는 값을 출력하지 않습니다. Linux, 사용자 소유 프로필, 안전한 디렉터리 권한이 필요하며 관리되지 않거나 로컬에서
+수정된 플러그인은 덮어쓰지 않고 거부합니다.
+
+설치만으로는 플러그인이 활성화되지 않고 설정이 바뀌지 않으며 서비스를 재시작하지 않습니다. 격리를 확인한 뒤 **같은** Hermes
+프로필에서 `hermes plugins validate "$PROFILE_HOME/plugins/platforms/onesignal"`와 `hermes plugins list`로 점검하세요.
+이름 있는 프로필에서는 `hermes -p <profile> plugins ...`를 사용하세요. 실행을 명시적으로 신뢰하고 동의할 때만
+`hermes plugins enable onesignal`(또는 `hermes -p <profile> plugins enable onesignal`)을 실행하세요. 대상 Hermes
+버전의 플랫폼 설정을 확인하고 필요하면 gateway를 직접 재시작하세요. 유효한 자격 증명은 `phone`을 플러그인의 홈 대상으로
+설정합니다. 이 자체로는 기존 cron 작업이 바뀌지 않습니다. `all` 경로 작업은 플러그인 활성화 후 이 휴대폰을 포함하기 시작할 수
+있습니다. 시작 채팅이 없는 `origin` 작업도 홈 채널로 fallback할 수 있습니다. 활성화 전에 해당 작업들을 점검하세요.
+Android 앱에서는 새 경로를 사용할 각 작업에 **Push (OneSignal)** 또는 **Telegram + push**를 선택하세요.
+
+업그레이드하려면 새 체크아웃을 검토한 뒤 `plan`, 이어서 `apply`를 반복하세요. 변경 없는 파일은 그대로 두고 자격 증명과 다른
+플러그인은 유지되며, 관리 대상 파일이 수정되어 있으면 거부합니다. 중단된 디렉터리 전환은 `plugins/platforms` 아래에
+`.hermes_onesignal.previous` 백업을 남깁니다. 재시도 전에 백업과 대상을 확인하고 어느 쪽도 덮어쓰지 않도록 정리하세요.
+자격 증명 생성 후의 오류는 비공개 파일을 그대로 남길 수 있습니다. 다음 실행에서 이 파일은 유지됩니다. 기존 Surfaces 설치
+관리자와 그 업그레이드/제거 명령은 이 플러그인과 자격 증명을 설치하거나 제거하지 않습니다.
+
+
 ## 업그레이드와 제거
 
 ```sh

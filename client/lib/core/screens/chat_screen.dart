@@ -711,7 +711,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       ...widget.testInitialAttachmentDrafts,
     ];
     if (_textController.text != widget.initialComposerText ||
-        !listEquals(_attachmentDrafts, initialDrafts)) return;
+        !listEquals(_attachmentDrafts, initialDrafts)) {
+      return;
+    }
     await _sendMessage();
   }
 
@@ -2687,7 +2689,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (!mounted || _preparingAttachments || _streaming ||
         _pendingReattachResync || _voiceComposer.listening ||
         _textController.text != composerText ||
-        !listEquals(attachments, _attachmentDrafts)) return;
+        !listEquals(attachments, _attachmentDrafts)) {
+      return;
+    }
     final text = composerText.trim();
     if (text.isEmpty && attachments.isEmpty) return;
 

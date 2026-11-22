@@ -215,6 +215,43 @@ umask 077 && printf 'MOBILE_SURFACES_MCP_TOKEN=%s\n' "$(sudo cat /etc/hermes-sur
 
 保存、标记或删除的按钮无需模型：Hermes 把每个按钮声明为对应用自身数据库的一项具名修改，你连同应用一起批准它，凡是会删除数据的操作都会在手机上再次询问你。如果按钮需要智能体亲自出手（生成图片、读取 PDF），它会向 Hermes 发送一条消息，由你阅读并自己发送。
 
+## 可选的 OneSignal 平台插件
+
+可选的仅外发插件可以向一个 OneSignal 订阅发送文本推送。它与 Surfaces 服务器相互独立，不会自动镜像现有的 cron 投递。通知文本
+会经过 OneSignal 和 Firebase；OneSignal 接受并不代表已送达。启用前请先阅读插件源码：Hermes 平台插件以 gateway 用户的权限
+运行，并要求 `plugins.isolation: in_process`。本安装器不会更改隔离设置。尤其不要在未理解并同意对其他插件影响的情况下切换既有
+的 `host` 隔离配置。与你的 Hermes 版本的兼容性需要自行确认；安装器不会检查 Hermes API。
+
+在你审阅并信任的检出中，以**运行目标 Hermes gateway 的操作系统用户**身份（不要用 `sudo`），把 `PROFILE_HOME` 设为该 gateway
+现有的绝对路径 `HERMES_HOME`。默认配置通常为 `$HOME/.hermes`；命名配置使用它自己的主目录。确认这是 gateway 实际使用的同一
+配置后执行：
+
+```sh
+PROFILE_HOME="$HOME/.hermes"  # replace with the target profile's absolute home when needed
+python3 tools/install/onesignal.py plan --hermes-home "$PROFILE_HOME"
+python3 tools/install/onesignal.py apply --hermes-home "$PROFILE_HOME"
+```
+
+`plan` 不写入任何内容。经你审阅后，`apply` 会把插件复制到
+`$PROFILE_HOME/plugins/platforms/onesignal`，并且仅在缺失时于终端中私密询问 OneSignal 的 app ID、API key 和
+subscription ID。它会以该用户属主、权限 0600 创建 `$PROFILE_HOME/onesignal.json`；既有的有效凭据会保留。切勿把这些值粘贴
+到聊天、命令参数或仓库中。无法隐藏输入的终端会被拒绝。安装器不会打印这些值。它要求 Linux、用户属主的配置目录和安全目录权限；
+对不受管理的或本地修改过的插件会拒绝而不是覆盖。
+
+安装本身不会启用插件、不会修改配置，也不会重启服务。确认隔离设置后，使用**同一个** Hermes 配置执行
+`hermes plugins validate "$PROFILE_HOME/plugins/platforms/onesignal"` 和 `hermes plugins list` 检查。命名配置请改用
+`hermes -p <profile> plugins ...`。只有在你明确信任并同意运行时，才执行 `hermes plugins enable onesignal`（或
+`hermes -p <profile> plugins enable onesignal`）。检查你的 Hermes 版本的平台配置，并在合适时自行重启 gateway。凭据有效时
+会把 `phone` 配置为插件的本地目标；这本身不会改变既有的 cron 任务。启用插件后，使用 `all` 路由的任务可能会开始包含这部手机；
+没有来源聊天的 `origin` 任务也可能回退到本地渠道。启用前请检查这些任务。在 Android 应用中，为需要新渠道的每个任务选择
+**Push (OneSignal)** 或 **Telegram + push**。
+
+升级时，先审阅新的检出，再重复 `plan` 和 `apply`：未变更的文件保持原样，凭据和其他插件都会保留；被管理文件若有修改则会拒绝。
+中断的目录切换会在 `plugins/platforms` 下留下 `.hermes_onesignal.previous` 备份；重试前请检查备份与目标目录，在不覆盖任何
+一方的前提下处理中断的升级。凭据创建之后发生的错误可能把该私密文件留在原处；下次运行会继续保留它。现有的 Surfaces 安装器
+及其升级/卸载命令不会安装或移除该插件及其凭据。
+
+
 ## 升级与卸载
 
 ```sh

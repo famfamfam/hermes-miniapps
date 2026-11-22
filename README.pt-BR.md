@@ -236,6 +236,53 @@ jeito. Para excluir um aplicativo use ⋮ → Delete app: ele vai para a lixeira
 
 Os botões que salvam, marcam ou apagam funcionam sem modelo: o Hermes declara cada um como uma alteração nomeada no banco do próprio app, você a aprova junto com o app, e tudo o que apaga pergunta de novo no telefone. Quando um botão precisa do próprio agente (gerar uma imagem, ler um PDF), ele envia ao Hermes uma mensagem que você lê e envia você mesmo.
 
+## Plugin opcional da plataforma OneSignal
+
+O plugin opcional somente de saída pode enviar um push de texto para uma assinatura do OneSignal. Ele é separado do
+servidor Surfaces e não espelha automaticamente as entregas cron existentes. O texto da notificação passa pelo OneSignal
+e pelo Firebase; a aceitação pelo OneSignal não prova a entrega. Leia o código do plugin antes de ativá-lo: plugins de
+plataforma do Hermes rodam com as permissões do usuário do gateway e exigem `plugins.isolation: in_process`. Este
+instalador não altera o isolamento. Em particular, não troque uma configuração de isolamento `host` existente sem
+entender e concordar com o impacto sobre os outros plugins. A compatibilidade com a sua versão do Hermes deve ser
+verificada; o instalador não verifica a API do Hermes.
+
+De um checkout confiável e revisado por você, como o **usuário do sistema operacional que executa o gateway do Hermes**
+(não `sudo`), defina `PROFILE_HOME` com o `HERMES_HOME` absoluto já existente desse gateway. Para o perfil padrão
+normalmente é `$HOME/.hermes`; para um perfil nomeado, use o diretório dele. Verifique que é o mesmo perfil que o
+gateway realmente usa e execute:
+
+```sh
+PROFILE_HOME="$HOME/.hermes"  # replace with the target profile's absolute home when needed
+python3 tools/install/onesignal.py plan --hermes-home "$PROFILE_HOME"
+python3 tools/install/onesignal.py apply --hermes-home "$PROFILE_HOME"
+```
+
+`plan` não grava nada. Depois de revisar, o `apply` copia o plugin para
+`$PROFILE_HOME/plugins/platforms/onesignal` e, somente se estiverem ausentes, solicita privativamente no terminal o app
+ID, a API key e o subscription ID do OneSignal. Ele cria `$PROFILE_HOME/onesignal.json` de propriedade deste usuário com
+modo 0600; credenciais válidas existentes são mantidas. Nunca cole esses valores em um chat, argumentos de comando ou no
+repositório. Um terminal que não consiga ocultar a digitação é recusado. O instalador não imprime os valores. Ele exige
+Linux, um perfil de propriedade do usuário e permissões seguras de diretório; recusa um plugin não gerenciado ou
+modificado localmente em vez de sobrescrevê-lo.
+
+A instalação não ativa o plugin, não edita a configuração e não reinicia serviços. Depois de conferir o isolamento,
+inspecione-o com `hermes plugins validate "$PROFILE_HOME/plugins/platforms/onesignal"` e `hermes plugins list`, usando o
+**mesmo** perfil do Hermes. Para um perfil nomeado use `hermes -p <profile> plugins ...`. Somente se você confiar
+explicitamente e consentir em executá-lo, rode `hermes plugins enable onesignal` (ou `hermes -p <profile> plugins
+enable onesignal`). Confira a configuração de plataformas da sua versão do Hermes e reinicie o gateway você mesmo quando
+couber. Credenciais válidas configuram `phone` como destino local do plugin; isso por si só não muda os trabalhos cron
+existentes. Tarefas com a rota `all` podem passar a incluir este telefone assim que o plugin for ativado. Uma tarefa
+`origin` sem chat de origem também pode recair no canal local. Revise essas tarefas antes de ativar. No aplicativo
+Android, escolha **Push (OneSignal)** ou **Telegram + push** para cada tarefa que deva usar o novo canal.
+
+Para atualizar, revise o novo checkout e repita `plan` e depois `apply`: arquivos inalterados ficam intactos, credenciais
+e outros plugins são preservados, e um arquivo gerenciado modificado causa recusa. Uma troca de diretório interrompida
+deixa um backup `.hermes_onesignal.previous` em `plugins/platforms`; examine o backup e o destino e resolva a
+atualização interrompida sem sobrescrever nenhum dos dois antes de tentar de novo. Um erro depois da criação das
+credenciais pode deixar o arquivo privado no lugar; a próxima execução o mantém. O instalador do Surfaces existente e
+seus comandos de atualização/desinstalação não instalam nem removem este plugin nem suas credenciais.
+
+
 ## Atualizar e desinstalar
 
 ```sh

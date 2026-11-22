@@ -229,6 +229,50 @@ umask 077 && printf 'MOBILE_SURFACES_MCP_TOKEN=%s\n' "$(sudo cat /etc/hermes-sur
 
 保存・マーク・削除をするボタンはモデルなしで動きます。Hermes は各ボタンをアプリ自身のデータベースへの名前付きの変更として宣言し、あなたがアプリと一緒に承認します。削除を伴うものはスマートフォンでもう一度確認されます。ボタンにエージェント自身が必要な場合（画像の生成、PDF の読み取り）は、Hermes へのメッセージを作り、あなたが読んで自分で送信します。
 
+## オプション：OneSignal プラットフォームプラグイン
+
+オプションの送信専用プラグインは、OneSignal の 1 つのサブスクリプションにテキストプッシュを送れます。Surfaces サーバーとは別物で、
+既存の cron 配信を自動的に複製しません。通知テキストは OneSignal と Firebase を経由します。OneSignal が受け付けても配信の
+保証にはなりません。有効化する前にプラグインのソースを読んでください。Hermes のプラットフォームプラグインは gateway ユーザーの
+権限で動作し、`plugins.isolation: in_process` が必要です。このインストーラーは分離設定を変更しません。特に、他のプラグインへの
+影響を理解し同意しないまま、既存の `host` 分離設定を切り替えないでください。お使いの Hermes バージョンとの互換性は自身で確認が
+必要で、インストーラーは Hermes API を検証しません。
+
+信頼して内容を確認したチェックアウトから、ターゲットの Hermes gateway を実行している **OS ユーザー**として（`sudo` では
+なく）、その gateway の既存の絶対パス `HERMES_HOME` を `PROFILE_HOME` に設定してください。既定プロファイルは通常
+`$HOME/.hermes`、名前付きプロファイルはそれぞれのホームです。gateway が実際に使っている同じプロファイルか確認してから実行します：
+
+```sh
+PROFILE_HOME="$HOME/.hermes"  # replace with the target profile's absolute home when needed
+python3 tools/install/onesignal.py plan --hermes-home "$PROFILE_HOME"
+python3 tools/install/onesignal.py apply --hermes-home "$PROFILE_HOME"
+```
+
+`plan` は何も書き込みません。確認の後、`apply` はプラグインを
+`$PROFILE_HOME/plugins/platforms/onesignal` にコピーし、未設定の場合にのみ端末で OneSignal の app ID、API key、
+subscription ID を非表示で入力させます。`$PROFILE_HOME/onesignal.json` をこのユーザー所有・モード 0600 で作成し、既存の
+有効な認証情報は保持します。これらの値をチャット、コマンド引数、リポジトリに貼らないでください。入力を隠せない端末は拒否され
+ます。インストーラーが値を表示することはありません。Linux、ユーザー所有のプロファイル、安全なディレクトリ権限が必要で、管理外
+またはローカル変更のあるプラグインは上書きせず拒否します。
+
+インストールはプラグインを有効化せず、設定を変更せず、サービスを再起動しません。分離を確認したうえで、**同じ** Hermes
+プロファイルで `hermes plugins validate "$PROFILE_HOME/plugins/platforms/onesignal"` と `hermes plugins list` で確認して
+ください。名前付きプロファイルでは `hermes -p <profile> plugins ...` を使います。実行を明示的に信頼し同意する場合にのみ
+`hermes plugins enable onesignal`（または `hermes -p <profile> plugins enable onesignal`）を実行してください。対象の
+Hermes バージョンのプラットフォーム設定を確認し、必要なら gateway を自分で再起動してください。有効な認証情報があると
+`phone` がプラグインのホーム宛先に設定されます。これ自体は既存の cron ジョブを変更しません。`all` 経路のジョブは、プラグイン
+有効化後にこの電話を含め始める可能性があります。起点チャットのない `origin` ジョブもホームチャネルにフォールバックすることが
+あります。有効化の前に該当ジョブを見直してください。Android アプリでは、新しい経路を使う各ジョブで
+**Push (OneSignal)** か **Telegram + push** を選びます。
+
+アップグレードは、新しいチェックアウトを確認して `plan`、次に `apply` を繰り返します。未変更のファイルはそのまま、認証情報と
+他のプラグインは保持され、管理下ファイルの変更があると拒否されます。中断されたディレクトリ切り替えは
+`plugins/platforms` の下に `.hermes_onesignal.previous` バックアップを残します。再試行の前にバックアップと宛先を確認し、どちら
+も上書きしないよう解決してください。認証情報作成後のエラーでは非公開ファイルがそのまま残ることがあります。次回の実行はこれを
+保持します。既存の Surfaces インストーラーとそのアップグレード／アンインストール用コマンドは、このプラグインとその認証情報を
+インストールも削除もしません。
+
+
 ## アップグレードとアンインストール
 
 ```sh
