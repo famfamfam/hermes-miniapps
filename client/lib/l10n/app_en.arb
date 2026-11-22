@@ -1,4 +1,7 @@
 {
+  "notification_text_title": "Notification",
+  "notification_text_may_be_truncated": "The notification text may be truncated.",
+  "notification_text_empty": "No notification text.",
   "@@locale": "en",
   "ai_full_text": "AI + full-text",
   "ai_search_model": "AI search model",
@@ -147,6 +150,9 @@
   "cron_resume": "Resume",
   "cron_deliver_label": "Send the result to",
   "cron_deliver_telegram": "Telegram",
+  "cron_deliver_push": "Push (OneSignal)",
+  "cron_deliver_telegram_push": "Telegram + push",
+  "cron_deliver_push_hint": "OneSignal must be set up for this server profile. Results pass through OneSignal and Firebase.",
   "cron_deliver_none": "Nowhere (stays only in Hermes)",
   "cron_deliver_origin": "The chat the task came from",
   "cron_deliver_other": "Other: {value}",
@@ -694,5 +700,14 @@
   "delete_chats_title": "Delete chats: {count}?",
   "delete_chats_body": "They are removed from the Hermes history on the server. This cannot be undone.",
   "chats_deleted": "Chats deleted: {count}",
-  "chats_not_deleted": "Not deleted: {count}. Try again later."
+  "chats_not_deleted": "Not deleted: {count}. Try again later.",
+  "onesignal_app_id": "OneSignal App ID",
+  "onesignal_app_id_help": "Enter an App ID (not a REST API key). Leave blank to use the build default. Restart the app after saving.",
+  "onesignal_invalid_id": "Enter a valid UUID.",
+  "onesignal_restart_required": "Restart the app to apply the OneSignal App ID.",
+  "onesignal_save_failed": "Could not save the App ID. Try again.",
+  "onesignal_subscription_id": "OneSignal Subscription ID",
+  "onesignal_subscription_pending": "Not available yet. Configure an App ID and restart the app; registration may take time.",
+  "onesignal_subscription_error": "Could not read the Subscription ID.",
+  "onesignal_copy_id": "Copy Subscription ID"
 }

@@ -123,7 +123,11 @@ Hermes のゲートウェイを再起動してください。キーは loopback 
 
 ### 3. アプリ
 
-いちばん簡単なのは、[Releases](https://github.com/famfamfam/hermes-miniapps/releases) ページの署名済み APK を使う方法です。スマートフォンで開くか（ブラウザやファイル管理アプリからのインストールを許可してください）、`adb install -r` でインストールします。リリースはすべてプロジェクトの同じ鍵で署名されているため、次のリリースは前のものに上書きインストールできます。自分でビルドする場合:
+いちばん簡単なのは、[Releases](https://github.com/famfamfam/hermes-miniapps/releases) ページの署名済み APK を使う方法です。スマートフォンで開くか（ブラウザやファイル管理アプリからのインストールを許可してください）、`adb install -r` でインストールします。既存のアプリを更新するには、パッケージ ID と署名キーが一致し、ビルド番号が適切である必要があります。
+
+旧パッケージ `dev.hermes.hermes_surfaces_example` のリリースと新パッケージ `dev.hermes.hermes_surfaces` のアプリは別々にインストールされます。データは分離され、データや承認デバイスのキーは自動では移行されません。アクセスの問題が解決するまで旧アプリを削除しないでください。
+
+自分でビルドする場合:
 
 ```sh
 cd client
@@ -132,9 +136,9 @@ flutter build apk --release
 adb install -r build/app/outputs/flutter-apk/app-release.apk
 ```
 
-`client/key.properties` がなければ、リリース APK はこのマシンのデバッグキーで署名されるので、そのままインストールできます。
+`client/key.properties` がなければ、リリース APK はこのマシンのデバッグキーで署名されるため、別のキーで署名されたアプリは更新できません。
 自分のキーで署名するには、`storeFile`、`storePassword`、`keyAlias`、`keyPassword` を書いた `client/key.properties` を作ります。
-更新には、同じアプリケーション ID（`dev.hermes.hermes_surfaces_example`）、同じキー、より大きいビルド番号（`--build-number`）が必要です。
+更新には、同じアプリケーション ID（`dev.hermes.hermes_surfaces`）、同じキー、より大きいビルド番号（`--build-number`）が必要です。
 
 ### 4. スマートフォンからサーバーに届くようにする
 

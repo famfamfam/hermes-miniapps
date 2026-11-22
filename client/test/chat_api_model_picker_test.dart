@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hermes_android/core/screens/chat_screen.dart';
 import 'package:hermes_android/core/services/connection_manager.dart';
@@ -12,8 +13,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'support/fake_voice_composer_adapter.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() {
     SharedPreferences.setMockInitialValues({'verbose_mode': false});
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          const MethodChannel('plugins.flutter.io/image_picker'),
+          (_) async => null,
+        );
   });
 
   testWidgets(
@@ -66,6 +73,7 @@ void main() {
               'provider': 'nous',
               'model': 'new-model',
               'require_model_lock': true,
+              'model_options': {'reasoning_effort': 'high'},
             });
             return http.Response(
               '{"object":"hermes.session.model_lock",'
@@ -115,7 +123,7 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await _pumpFrames(tester);
 
       await tester.tap(find.bySemanticsLabel('Choose chat model'));
       // The picker button intentionally keeps a progress spinner active while
@@ -128,6 +136,11 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('new-model'), findsOneWidget);
+      expect(find.text('profile default'), findsOneWidget);
+      await tester.tap(find.byType(DropdownButton<String>));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.tap(find.text('High').last);
+      await tester.pump(const Duration(milliseconds: 500));
       await tester.tap(find.text('new-model'));
       await tester.tap(find.text('Apply to this chat'));
       await tester.pump();
@@ -146,7 +159,7 @@ void main() {
 
       await tester.enterText(find.byType(TextField), 'Use the selected model');
       await tester.testTextInput.receiveAction(TextInputAction.send);
-      await tester.pumpAndSettle();
+      await _pumpFrames(tester);
 
       final lockIndex = requests.indexWhere(
         (request) =>
@@ -166,6 +179,10 @@ void main() {
       expect(
         requestBodies['/v1/chat/completions'],
         containsPair('provider', 'nous'),
+      );
+      expect(
+        requestBodies['/v1/chat/completions']?['model_options'],
+        {'reasoning_effort': 'high'},
       );
       expect(requests.any((request) => request.url.port == 9119), isFalse);
     },
@@ -263,7 +280,7 @@ void main() {
 
     await tester.enterText(find.byType(TextField), 'First turn');
     await tester.testTextInput.receiveAction(TextInputAction.send);
-    await tester.pumpAndSettle();
+    await _pumpFrames(tester);
 
     final createIndex = requests.indexWhere(
       (request) =>
@@ -277,6 +294,7 @@ void main() {
     expect(chatIndex, greaterThan(createIndex));
     expect(bodies['/v1/chat/completions'], containsPair('model', 'new-model'));
     expect(bodies['/v1/chat/completions'], containsPair('provider', 'nous'));
+    expect(bodies['/v1/chat/completions'], isNot(contains('model_options')));
   });
 
   testWidgets('duplicate model ids require an explicit provider choice', (
@@ -367,6 +385,13 @@ void main() {
   });
 }
 
+Future<void> _pumpFrames(WidgetTester tester) async {
+  await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 100)));
+  for (var i = 0; i < 8; i++) {
+    await tester.pump(const Duration(milliseconds: 150));
+  }
+}
+
 Future<void> _pumpApiOnlyChat(
   WidgetTester tester,
   ApiClient apiClient,
@@ -390,5 +415,5 @@ Future<void> _pumpApiOnlyChat(
       ),
     ),
   );
-  await tester.pumpAndSettle();
+  await _pumpFrames(tester);
 }

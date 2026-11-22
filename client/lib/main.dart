@@ -1,10 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'core/services/android_launch_intent_service.dart';
 import 'core/services/android_share_intent_service.dart';
 import 'core/services/composer_draft_store.dart';
+import 'core/services/sent_attachment_cache.dart';
 import 'core/services/config_backup.dart';
 import 'core/services/config_backup_io.dart';
 import 'core/services/config_backup_service.dart';
@@ -13,6 +15,7 @@ import 'core/services/gateway_turn_application_controller.dart';
 import 'core/services/local_chat_pin_store.dart';
 import 'core/services/native_apps.dart';
 import 'core/services/notification_prefs.dart';
+import 'core/services/one_signal_service.dart';
 import 'core/services/text_size_preference.dart';
 import 'core/services/turn_notification_service.dart';
 import 'core/screens/chat_screen.dart';
@@ -27,6 +30,7 @@ import 'package:hermes_android/core/l10n/l10n.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final prefs = await SharedPreferences.getInstance();
+  await OneSignalService.initialize(prefs);
   ConnectionManager? connManager;
   Object? startupError;
   try {
@@ -205,6 +209,80 @@ class HermesAppState extends State<HermesApp> {
   /// Pushes from the app root (notification taps) need a navigator below the
   /// MaterialApp this state builds.
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
+  bool _pushDialogScheduled = false;
+  bool _pushDialogAttempted = false;
+  bool _pushPermissionPending = false;
+  static const _pushDialogKey = 'onesignal_setup_dialog_shown';
+
+  void _pushSubscriptionChanged(OSPushSubscriptionChangedState state) {
+    unawaited(_showPushSetupWhenRegistered(state.current.id));
+  }
+
+  Future<void> _showPushSetupWhenRegistered(String? id) async {
+    if (!mounted ||
+        !OneSignalService.isRegistered(id) ||
+        _pushDialogScheduled ||
+        _pushDialogAttempted ||
+        (widget.connManager.prefs.getBool(_pushDialogKey) ?? false)) {
+      return;
+    }
+    _pushDialogScheduled = true;
+    // endOfFrame schedules a frame when idle and lets startup navigation finish.
+    await WidgetsBinding.instance.endOfFrame;
+    final context = _navigatorKey.currentContext;
+    if (!mounted || context == null || !context.mounted) {
+      _pushDialogScheduled = false;
+      return;
+    }
+    _pushDialogAttempted = true;
+    final russian = Localizations.localeOf(context).languageCode == 'ru';
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(
+          russian
+              ? 'Уведомления OneSignal подключены'
+              : 'Your OneSignal SDK integration is complete!',
+        ),
+        content: Text(
+          russian
+              ? 'Нажмите «Понятно», чтобы разрешить push-уведомления.'
+              : 'You can now send Push Notifications & In-App Messages through OneSignal. Tap below to enable push notifications.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              if (_pushPermissionPending) return;
+              _pushPermissionPending = true;
+              try {
+                final granted = await OneSignalService.requestPermission();
+                if (granted) {
+                  await widget.connManager.prefs.setBool(_pushDialogKey, true);
+                }
+              } catch (error) {
+                debugPrint('OneSignal permission request failed: $error');
+              } finally {
+                _pushPermissionPending = false;
+                if (dialogContext.mounted) Navigator.pop(dialogContext);
+              }
+            },
+            child: Text(russian ? 'Понятно' : 'Got it'),
+          ),
+        ],
+      ),
+    );
+    _pushDialogScheduled = false;
+  }
+
+  Future<void> _checkPushSubscription() async {
+    try {
+      final id = await OneSignalService.readSubscriptionId();
+      await _showPushSetupWhenRegistered(id);
+    } catch (error) {
+      debugPrint('OneSignal subscription check failed: $error');
+    }
+  }
 
   @override
   void initState() {
@@ -212,6 +290,13 @@ class HermesAppState extends State<HermesApp> {
     _turnApplicationController = GatewayTurnApplicationController();
     unawaited(NotificationPrefsStore.load());
     notificationResponseHandler = _handleNotificationResponse;
+    if (OneSignalService.initialized) {
+      OneSignalService.addObserver(_pushSubscriptionChanged);
+      OneSignalService.registerClickListener();
+      OneSignalService.onClicksAvailable = _scheduleOneSignalClicks;
+      _scheduleOneSignalClicks();
+      unawaited(_checkPushSubscription());
+    }
     // A notification that launched a terminated app carries its tap/action in
     // the platform's launch details; route it once the first frame is up.
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -219,6 +304,34 @@ class HermesAppState extends State<HermesApp> {
           .takeInitialNotificationResponse();
       if (initial != null && mounted) _handleNotificationResponse(initial);
     });
+  }
+
+  bool _oneSignalClicksScheduled = false;
+
+  void _scheduleOneSignalClicks() {
+    if (_oneSignalClicksScheduled) return;
+    _oneSignalClicksScheduled = true;
+    () async {
+      await WidgetsBinding.instance.endOfFrame;
+      _oneSignalClicksScheduled = false;
+      if (!mounted) return;
+      final navigator = _navigatorKey.currentState;
+      if (navigator == null) {
+        _scheduleOneSignalClicks();
+        return;
+      }
+      for (final event in OneSignalService.takePendingClicks()) {
+        final notification = event.notification;
+        navigator.push(
+          MaterialPageRoute<void>(
+            builder: (_) => _NotificationTextScreen(
+              title: notification.title,
+              body: notification.body,
+            ),
+          ),
+        );
+      }
+    }();
   }
 
   /// The connection a notification response should act on: the last one the
@@ -391,8 +504,47 @@ class HermesAppState extends State<HermesApp> {
 
   @override
   void dispose() {
+    if (OneSignalService.initialized) {
+      OneSignalService.removeObserver(_pushSubscriptionChanged);
+      OneSignalService.onClicksAvailable = null;
+    }
     unawaited(_turnApplicationController.close());
     super.dispose();
+  }
+}
+
+class _NotificationTextScreen extends StatelessWidget {
+  const _NotificationTextScreen({this.title, this.body});
+
+  final String? title;
+  final String? body;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasTitle = title?.trim().isNotEmpty == true;
+    final hasBody = body?.trim().isNotEmpty == true;
+    return Scaffold(
+      appBar: AppBar(title: Text(context.l10n.notification_text_title)),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(context.l10n.notification_text_may_be_truncated),
+            const SizedBox(height: 16),
+            if (hasTitle)
+              SelectableText(
+                title!,
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+            if (hasTitle && hasBody) const SizedBox(height: 12),
+            if (hasBody) SelectableText(body!),
+            if (!hasTitle && !hasBody)
+              Text(context.l10n.notification_text_empty),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -1094,6 +1246,7 @@ class HomeScreenState extends State<HomeScreen> {
                 // Drop every draft stored for this connection: a deleted
                 // connection must not leave orphaned drafts behind.
                 await ComposerDraftStore.removeConnection(conn.id);
+                await SentAttachmentCache.removeConnection(conn.id);
                 await LocalChatPinStore.removeConnection(
                   await SharedPreferences.getInstance(),
                   conn.id,

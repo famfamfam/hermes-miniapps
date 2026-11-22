@@ -76,6 +76,55 @@ String stripToolResultText(String text) {
   return stripped;
 }
 
+/// Splits a multimodal message into its image data URLs and text-part text.
+///
+/// Used by the chat to render attached photos inline instead of `[Image]`
+/// placeholders. Plain-string content yields no images and the string itself.
+(List<String>, String) messageImageParts(dynamic content) {
+  if (content is! List) return (const [], content is String ? content : '');
+  final urls = <String>[];
+  final textParts = <String>[];
+  for (final part in content) {
+    if (part is! Map) continue;
+    if (part['type']?.toString().contains('image') == true ||
+        part.containsKey('image_url')) {
+      final url = (part['image_url'] is Map
+              ? part['image_url']['url']
+              : part['image_url'])
+          ?.toString();
+      if (url != null && url.isNotEmpty) urls.add(url);
+    } else if (part['text'] is String) {
+      textParts.add(part['text'] as String);
+    }
+  }
+  return (urls, textParts.join('\n\n'));
+}
+
+/// One attached document kept in a message's own content: display name and
+/// the data URL carrying the bytes.
+typedef MessageFileAttachment = ({String name, String dataUrl});
+
+/// Extracts `file` parts (OpenAI inline-document shape) from message content.
+///
+/// The gateway stores chat documents only for the running turn; these parts
+/// exist in the locally sent message, which is where the tappable cards read
+/// their bytes from.
+List<MessageFileAttachment> messageFileParts(dynamic content) {
+  if (content is! List) return const [];
+  final files = <MessageFileAttachment>[];
+  for (final part in content) {
+    if (part is! Map) continue;
+    final type = part['type']?.toString() ?? '';
+    if (!type.contains('file') && !part.containsKey('file')) continue;
+    final file = part['file'];
+    if (file is! Map) continue;
+    final name = file['filename']?.toString() ?? 'document';
+    final data = file['file_data']?.toString() ?? '';
+    if (data.isNotEmpty) files.add((name: name, dataUrl: data));
+  }
+  return files;
+}
+
 String _contentPartToText(dynamic part) {
   if (part == null) return '';
   if (part is String) return normaliseDisplayText(part);
@@ -85,12 +134,10 @@ String _contentPartToText(dynamic part) {
   if (text is String && text.isNotEmpty) return normaliseDisplayText(text);
 
   final type = part['type']?.toString() ?? 'unknown';
-  if (type.contains('image') || part.containsKey('image_url')) {
-    return '[Image]';
-  }
-  if (type.contains('file') || part.containsKey('file')) {
-    return '[File]';
-  }
+  // Binary parts render as thumbnails/cards elsewhere in the bubble; a text
+  // placeholder here would duplicate them.
+  if (type.contains('image') || part.containsKey('image_url')) return '';
+  if (type.contains('file') || part.containsKey('file')) return '';
 
   return '[Unsupported content: $type]';
 }

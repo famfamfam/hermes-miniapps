@@ -9,6 +9,16 @@ class AppLocalizationsPt extends AppLocalizations {
   AppLocalizationsPt([String locale = 'pt']) : super(locale);
 
   @override
+  String get notification_text_title => 'Notificação';
+
+  @override
+  String get notification_text_may_be_truncated =>
+      'O texto da notificação pode estar truncado.';
+
+  @override
+  String get notification_text_empty => 'Não há texto de notificação.';
+
+  @override
   String get ai_full_text => 'IA + texto completo';
 
   @override
@@ -538,6 +548,16 @@ class AppLocalizationsPt extends AppLocalizations {
 
   @override
   String get cron_deliver_telegram => 'Telegram';
+
+  @override
+  String get cron_deliver_push => 'Push (OneSignal)';
+
+  @override
+  String get cron_deliver_telegram_push => 'Telegram + push';
+
+  @override
+  String get cron_deliver_push_hint =>
+      'OneSignal must be set up for this server profile. Results pass through OneSignal and Firebase.';
 
   @override
   String get cron_deliver_none => 'Nowhere (stays only in Hermes)';
@@ -2555,11 +2575,53 @@ class AppLocalizationsPt extends AppLocalizations {
   String chats_not_deleted(Object count) {
     return 'Not deleted: $count. Try again later.';
   }
+
+  @override
+  String get onesignal_app_id => 'OneSignal App ID';
+
+  @override
+  String get onesignal_app_id_help =>
+      'Insira o App ID (não a chave REST API). Deixe em branco para usar o padrão da compilação. Reinicie o app após salvar.';
+
+  @override
+  String get onesignal_invalid_id => 'Insira um UUID válido.';
+
+  @override
+  String get onesignal_restart_required =>
+      'Reinicie o app para aplicar o OneSignal App ID.';
+
+  @override
+  String get onesignal_save_failed =>
+      'Não foi possível salvar o App ID. Tente novamente.';
+
+  @override
+  String get onesignal_subscription_id => 'OneSignal Subscription ID';
+
+  @override
+  String get onesignal_subscription_pending =>
+      'Ainda indisponível. Configure o App ID e reinicie o app; o registro pode demorar.';
+
+  @override
+  String get onesignal_subscription_error =>
+      'Não foi possível ler o Subscription ID.';
+
+  @override
+  String get onesignal_copy_id => 'Copiar Subscription ID';
 }
 
 /// The translations for Portuguese, as used in Brazil (`pt_BR`).
 class AppLocalizationsPtBr extends AppLocalizationsPt {
   AppLocalizationsPtBr() : super('pt_BR');
+
+  @override
+  String get notification_text_title => 'Notificação';
+
+  @override
+  String get notification_text_may_be_truncated =>
+      'O texto da notificação pode estar truncado.';
+
+  @override
+  String get notification_text_empty => 'Não há texto de notificação.';
 
   @override
   String get ai_full_text => 'IA + texto completo';
@@ -4944,4 +5006,36 @@ class AppLocalizationsPtBr extends AppLocalizationsPt {
   @override
   String get could_not_save_chat_pin =>
       'Não foi possível salvar a fixação neste dispositivo';
+
+  @override
+  String get onesignal_app_id => 'OneSignal App ID';
+
+  @override
+  String get onesignal_app_id_help =>
+      'Insira o App ID (não a chave REST API). Deixe em branco para usar o padrão da compilação. Reinicie o app após salvar.';
+
+  @override
+  String get onesignal_invalid_id => 'Insira um UUID válido.';
+
+  @override
+  String get onesignal_restart_required =>
+      'Reinicie o app para aplicar o OneSignal App ID.';
+
+  @override
+  String get onesignal_save_failed =>
+      'Não foi possível salvar o App ID. Tente novamente.';
+
+  @override
+  String get onesignal_subscription_id => 'OneSignal Subscription ID';
+
+  @override
+  String get onesignal_subscription_pending =>
+      'Ainda indisponível. Configure o App ID e reinicie o app; o registro pode demorar.';
+
+  @override
+  String get onesignal_subscription_error =>
+      'Não foi possível ler o Subscription ID.';
+
+  @override
+  String get onesignal_copy_id => 'Copiar Subscription ID';
 }

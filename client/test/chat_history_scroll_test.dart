@@ -3,11 +3,13 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:hermes_android/core/models/attachment_draft.dart';
 import 'package:hermes_android/core/screens/chat_screen.dart';
+import 'package:hermes_android/core/services/attachment_draft_service.dart';
 import 'package:hermes_android/core/services/connection_manager.dart';
 import 'package:hermes_android/core/services/ws_client.dart';
 import 'package:hermes_android/core/utils/chat_history_scroll.dart';
@@ -208,6 +210,357 @@ void main() {
         expect(find.bySemanticsLabel('Go to end'), findsNothing);
       },
     );
+
+    testWidgets('screenshot projection keeps the sent photos visible', (
+      tester,
+    ) async {
+      final client = _ControlledChatHttpClient(const []);
+      final service = _SlowRemovalDraftService();
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: ChatScreen(
+            connection: SavedConnection(
+              id: 'projection',
+              label: 'Fixture',
+              host: 'fixture.example',
+              port: 8642,
+              apiKey: 'synthetic-test-key',
+            ),
+            session: Session(
+              id: 'projection',
+              title: 'Fixture chat',
+              model: 'fixture-model',
+              source: 'test',
+              messageCount: 0,
+              isActive: true,
+              preview: '',
+              startedAt: 1,
+            ),
+            testApiClient: ApiClient(
+              baseUrl: 'http://fixture.example',
+              apiKey: 'synthetic-test-key',
+              httpClient: client,
+            ),
+            testAttachmentDraftService: service,
+            testInitialAttachmentDrafts: [
+              AttachmentDraft(
+                id: 'shot',
+                cachedPath: 'C:/synthetic/shot.png',
+                name: 'shot.png',
+                byteLength: 4,
+                mediaType: 'image/png',
+                kind: AttachmentDraftKind.image,
+                sanitized: true,
+              ),
+            ],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'see this');
+      await tester.tap(find.byTooltip('Send'));
+      await tester.pump();
+      await client.postStarted.future;
+      client.emitToken('Working');
+      await tester.pump();
+      expect(find.text('Working', findRichText: true), findsOneWidget);
+      expect(find.bySemanticsLabel('Attachment drafts'), findsNothing);
+      expect(find.byType(Image), findsOneWidget);
+      client.finish([
+        {'role': 'user', 'content': 'see this\n[screenshot]'},
+        {'role': 'assistant', 'content': 'done'},
+      ]);
+      await tester.pumpAndSettle();
+      expect(find.text('see this'), findsOneWidget);
+      expect(find.text('[screenshot]'), findsNothing);
+      expect(find.byType(Image), findsOneWidget);
+    });
+
+    testWidgets('lost image recovery blocks selection and send', (tester) async {
+      const picker = MethodChannel('plugins.flutter.io/image_picker');
+      final retrieveStarted = Completer<void>();
+      final retrieveResult = Completer<void>();
+      var galleryCalls = 0;
+      final messenger = tester.binding.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(picker, (call) async {
+        if (call.method == 'retrieve') {
+          retrieveStarted.complete();
+          await retrieveResult.future;
+          return null;
+        }
+        expect(call.method, 'pickMultiImage');
+        galleryCalls++;
+        return <String>[];
+      });
+      addTearDown(() {
+        if (!retrieveResult.isCompleted) retrieveResult.complete();
+        messenger.setMockMethodCallHandler(picker, null);
+      });
+      final client = _ControlledChatHttpClient(const []);
+      await _pumpChat(
+        tester,
+        client: client,
+        connectionId: 'recovery-pending',
+        sessionId: 'recovery-pending',
+        settle: false,
+      );
+      await tester.pump();
+      expect(retrieveStarted.isCompleted, isTrue);
+      await tester.enterText(find.byType(TextField), 'pending recovery');
+      await tester.pump();
+      expect(
+        tester.widget<IconButton>(find.byTooltip('Attach image or file')).onPressed,
+        isNull,
+      );
+      expect(tester.widget<IconButton>(find.byTooltip('Send')).onPressed, isNull);
+      await tester.tap(find.byTooltip('Attach image or file'));
+      await tester.tap(find.byTooltip('Send'));
+      await tester.testTextInput.receiveAction(TextInputAction.send);
+      await tester.pump();
+      expect(find.text('Choose images'), findsNothing);
+      expect(galleryCalls, 0);
+      expect(client.postStarted.isCompleted, isFalse);
+
+      retrieveResult.complete();
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<IconButton>(find.byTooltip('Attach image or file')).onPressed,
+        isNotNull,
+      );
+      expect(tester.widget<IconButton>(find.byTooltip('Send')).onPressed, isNotNull);
+      await tester.tap(find.byTooltip('Attach image or file'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Choose images'));
+      await tester.pumpAndSettle();
+      expect(galleryCalls, 1);
+      await tester.tap(find.byTooltip('Send'));
+      await tester.pump();
+      expect(client.postStarted.isCompleted, isTrue);
+      client.finish([
+        {'role': 'user', 'content': 'pending recovery'},
+      ]);
+      await tester.pumpAndSettle();
+    });
+
+    for (final scenario in ['unchanged', 'edited', 'recovered']) {
+      testWidgets('initial send waits for recovery: $scenario', (tester) async {
+        const picker = MethodChannel('plugins.flutter.io/image_picker');
+        final retrieveResult = Completer<Map<String, Object>?>();
+        final messenger = tester.binding.defaultBinaryMessenger;
+        messenger.setMockMethodCallHandler(picker, (call) async {
+          expect(call.method, 'retrieve');
+          return retrieveResult.future;
+        });
+        addTearDown(() {
+          if (!retrieveResult.isCompleted) retrieveResult.complete(null);
+          messenger.setMockMethodCallHandler(picker, null);
+        });
+        final client = _ControlledChatHttpClient(const []);
+        final service = _RecoveredImageDraftService();
+        await tester.pumpWidget(
+          MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: ChatScreen(
+              connection: SavedConnection(
+                id: 'initial-$scenario',
+                label: 'Fixture',
+                host: 'fixture.example',
+                port: 8642,
+                apiKey: 'synthetic-test-key',
+              ),
+              session: Session(
+                id: 'initial-$scenario',
+                title: 'Fixture chat',
+                model: 'fixture-model',
+                source: 'test',
+                messageCount: 0,
+                isActive: true,
+                preview: '',
+                startedAt: 1,
+              ),
+              testApiClient: ApiClient(
+                baseUrl: 'http://fixture.example',
+                apiKey: 'synthetic-test-key',
+                httpClient: client,
+              ),
+              testAttachmentDraftService: service,
+              initialComposerText: 'confirmed text',
+              sendInitialText: true,
+            ),
+          ),
+        );
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(client.postStarted.isCompleted, isFalse);
+        if (scenario == 'edited') {
+          await tester.enterText(find.byType(TextField), 'edited text');
+        }
+        retrieveResult.complete(
+          scenario == 'recovered'
+              ? {
+                  'path': 'C:/synthetic/photo.png',
+                  'pathList': ['C:/synthetic/photo.png'],
+                  'type': 'image',
+                }
+              : null,
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 200));
+        await tester.pump();
+        if (scenario == 'unchanged') {
+          expect(client.postStarted.isCompleted, isTrue);
+          final request = jsonDecode(client.lastRequestBody!) as Map<String, dynamic>;
+          expect(request['messages'], [
+            {'role': 'user', 'content': 'confirmed text'},
+          ]);
+          client.finish(const []);
+          await tester.pumpAndSettle();
+        } else {
+          expect(client.postStarted.isCompleted, isFalse);
+          expect(
+            tester.widget<TextField>(find.byType(TextField)).controller!.text,
+            scenario == 'edited' ? 'edited text' : 'confirmed text',
+          );
+          if (scenario == 'recovered') {
+            expect(find.bySemanticsLabel('Attachment drafts'), findsOneWidget);
+          }
+        }
+      });
+    }
+
+    testWidgets('gallery selection blocks send until it completes', (
+      tester,
+    ) async {
+      const picker = MethodChannel('plugins.flutter.io/image_picker');
+      final pickerStarted = Completer<void>();
+      final pickerResult = Completer<List<String>>();
+      final messenger = tester.binding.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(picker, (call) async {
+        if (call.method == 'retrieve') return null;
+        expect(call.method, 'pickMultiImage');
+        pickerStarted.complete();
+        return pickerResult.future;
+      });
+      addTearDown(() {
+        if (!pickerResult.isCompleted) pickerResult.complete([]);
+        messenger.setMockMethodCallHandler(picker, null);
+      });
+      final client = _ControlledChatHttpClient(const []);
+      await _pumpChat(
+        tester,
+        client: client,
+        connectionId: 'gallery-pending',
+        sessionId: 'gallery-pending',
+      );
+
+      await tester.tap(find.bySemanticsLabel('Add attachment'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Choose images'));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(pickerStarted.isCompleted, isTrue);
+      await tester.enterText(find.byType(TextField), 'pending selection');
+      await tester.pump();
+      expect(tester.widget<IconButton>(find.byTooltip('Send')).onPressed, isNull);
+      await tester.tap(find.byTooltip('Send'));
+      await tester.pump();
+      expect(client.postStarted.isCompleted, isFalse);
+
+      pickerResult.complete([]);
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<IconButton>(find.byTooltip('Send')).onPressed,
+        isNotNull,
+      );
+      await tester.tap(find.byTooltip('Send'));
+      await tester.pump();
+      await client.postStarted.future;
+      final request =
+          jsonDecode(client.lastRequestBody!) as Map<String, dynamic>;
+      expect(request['messages'], [
+        {'role': 'user', 'content': 'pending selection'},
+      ]);
+      client.finish([
+        {'role': 'user', 'content': 'pending selection'},
+      ]);
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('send locks drafts and Stop does not bring them back', (
+      tester,
+    ) async {
+      final client = _ControlledChatHttpClient(const []);
+      final readGate = Completer<void>();
+      final service = _SlowRemovalDraftService(readGate: readGate);
+      addTearDown(() {
+        if (!readGate.isCompleted) readGate.complete();
+        if (!service.releaseRemoval.isCompleted) {
+          service.releaseRemoval.complete();
+        }
+      });
+      await _pumpChat(
+        tester,
+        client: client,
+        connectionId: 'slow-removal',
+        sessionId: 'slow-removal',
+        attachmentDraftService: service,
+        initialDrafts: [_fixtureDraft('sent-file')],
+      );
+      final remove = find.byTooltip('Remove attachment');
+      expect(tester.widget<IconButton>(remove).onPressed, isNotNull);
+      await tester.tap(find.byTooltip('Send'));
+      await tester.pump();
+      expect(client.postStarted.isCompleted, isFalse);
+      expect(tester.widget<IconButton>(remove).onPressed, isNull);
+      expect(
+        tester.widget<IconButton>(find.byTooltip('Attach image or file')).onPressed,
+        isNull,
+      );
+
+      readGate.complete();
+      await tester.pump();
+      expect(client.postStarted.isCompleted, isTrue);
+      expect(find.bySemanticsLabel('Attachment drafts'), findsNothing);
+      await tester.tap(find.byTooltip('Stop response'));
+      await tester.pump();
+      expect(service.removedIds, ['sent-file']);
+      expect(service.removalFinished, isFalse);
+      expect(find.bySemanticsLabel('Attachment drafts'), findsNothing);
+      service.releaseRemoval.complete();
+      await tester.pumpAndSettle();
+      expect(service.removalFinished, isTrue);
+      expect(find.bySemanticsLabel('Attachment drafts'), findsNothing);
+    });
+
+    testWidgets('REST rejection restores editable files and text', (
+      tester,
+    ) async {
+      final client = _ControlledChatHttpClient(const [], postStatusCode: 413);
+      final service = _SlowRemovalDraftService()..releaseRemoval.complete();
+      await _pumpChat(
+        tester,
+        client: client,
+        connectionId: 'rejected-file',
+        sessionId: 'rejected-file',
+        attachmentDraftService: service,
+        initialDrafts: [_fixtureDraft('rejected-file')],
+      );
+      await tester.enterText(find.byType(TextField), 'Try this');
+      await tester.tap(find.byTooltip('Send'));
+      await tester.pumpAndSettle();
+      expect(client.postStarted.isCompleted, isTrue);
+      expect(find.bySemanticsLabel('Attachment drafts'), findsOneWidget);
+      expect(
+        tester.widget<IconButton>(find.byTooltip('Remove attachment')).onPressed,
+        isNotNull,
+      );
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        'Try this',
+      );
+      expect(service.removedIds, isEmpty);
+    });
 
     testWidgets('reopening ignores an old position and returns to end', (
       tester,
@@ -491,6 +844,7 @@ Future<void> _pumpChat(
   EdgeInsets viewInsets = EdgeInsets.zero,
   TestRemotePromptSubmit? remoteSubmit,
   Future<String?> Function()? serverFilePicker,
+  AttachmentDraftService? attachmentDraftService,
   List<AttachmentDraft> initialDrafts = const [],
   bool settle = true,
 }) async {
@@ -531,6 +885,7 @@ Future<void> _pumpChat(
         testApiClient: apiClient,
         testRemotePromptSubmit: remoteSubmit,
         testServerFilePicker: serverFilePicker,
+        testAttachmentDraftService: attachmentDraftService,
         testInitialAttachmentDrafts: initialDrafts,
       ),
     ),
@@ -587,6 +942,48 @@ List<Map<String, dynamic>> _longHistory() {
   ];
 }
 
+class _RecoveredImageDraftService extends AttachmentDraftService {
+  @override
+  Future<AttachmentDraft> prepareImage({
+    required String sourcePath,
+    required String displayName,
+    required Iterable<AttachmentDraft> existingDrafts,
+    required AttachmentDraftMode mode,
+  }) async => AttachmentDraft(
+    id: 'recovered-image',
+    cachedPath: sourcePath,
+    name: displayName,
+    byteLength: 4,
+    mediaType: 'image/png',
+    kind: AttachmentDraftKind.image,
+    sanitized: true,
+  );
+}
+
+class _SlowRemovalDraftService extends AttachmentDraftService {
+  final Completer<void>? readGate;
+  final releaseRemoval = Completer<void>();
+  final removedIds = <String>[];
+  bool removalFinished = false;
+
+  _SlowRemovalDraftService({this.readGate});
+
+  @override
+  Future<String> readDataUrl(AttachmentDraft draft) async {
+    await readGate?.future;
+    if (!draft.isImage) return 'data:text/plain;base64,dGVzdA==';
+    // 1x1 transparent PNG so the bubble's Image.memory decode succeeds.
+    return 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+  }
+
+  @override
+  Future<void> removeAll(Iterable<AttachmentDraft> drafts) async {
+    removedIds.addAll(drafts.map((draft) => draft.id));
+    await releaseRemoval.future;
+    removalFinished = true;
+  }
+}
+
 class _ControlledRemotePrompt {
   Completer<void> started = Completer<void>();
   Completer<void>? _completion;
@@ -618,12 +1015,14 @@ class _ControlledChatHttpClient extends http.BaseClient {
   List<Map<String, dynamic>> serverMessages;
   final Completer<void> postStarted = Completer<void>();
   final Completer<void>? historyGate;
+  final int postStatusCode;
   StreamController<List<int>>? _completionStream;
   String? lastRequestBody;
 
   _ControlledChatHttpClient(
     List<Map<String, dynamic>> messages, {
     this.historyGate,
+    this.postStatusCode = 200,
   }) : serverMessages = List<Map<String, dynamic>>.from(messages);
 
   @override
@@ -635,8 +1034,13 @@ class _ControlledChatHttpClient extends http.BaseClient {
     if (request.method == 'POST' &&
         request.url.path.endsWith('/v1/chat/completions')) {
       lastRequestBody = (request as http.Request).body;
-      _completionStream = StreamController<List<int>>();
       if (!postStarted.isCompleted) postStarted.complete();
+      if (postStatusCode != 200) {
+        return _jsonResponse({
+          'error': {'message': 'Rejected'},
+        }, statusCode: postStatusCode);
+      }
+      _completionStream = StreamController<List<int>>();
       return http.StreamedResponse(
         _completionStream!.stream,
         200,

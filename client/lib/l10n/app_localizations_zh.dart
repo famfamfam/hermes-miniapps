@@ -9,6 +9,15 @@ class AppLocalizationsZh extends AppLocalizations {
   AppLocalizationsZh([String locale = 'zh']) : super(locale);
 
   @override
+  String get notification_text_title => '通知';
+
+  @override
+  String get notification_text_may_be_truncated => '通知文本可能被截断。';
+
+  @override
+  String get notification_text_empty => '没有通知文本。';
+
+  @override
   String get ai_full_text => 'AI + 全文';
 
   @override
@@ -517,6 +526,16 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get cron_deliver_telegram => 'Telegram';
+
+  @override
+  String get cron_deliver_push => 'Push (OneSignal)';
+
+  @override
+  String get cron_deliver_telegram_push => 'Telegram + push';
+
+  @override
+  String get cron_deliver_push_hint =>
+      'OneSignal must be set up for this server profile. Results pass through OneSignal and Firebase.';
 
   @override
   String get cron_deliver_none => 'Nowhere (stays only in Hermes)';
@@ -2474,11 +2493,49 @@ class AppLocalizationsZh extends AppLocalizations {
   String chats_not_deleted(Object count) {
     return 'Not deleted: $count. Try again later.';
   }
+
+  @override
+  String get onesignal_app_id => 'OneSignal App ID';
+
+  @override
+  String get onesignal_app_id_help =>
+      '输入 App ID（不是 REST API 密钥）。留空则使用构建时的默认值。保存后请重启应用。';
+
+  @override
+  String get onesignal_invalid_id => '请输入有效的 UUID。';
+
+  @override
+  String get onesignal_restart_required => '请重启应用以应用 OneSignal App ID。';
+
+  @override
+  String get onesignal_save_failed => '无法保存 App ID，请重试。';
+
+  @override
+  String get onesignal_subscription_id => 'OneSignal Subscription ID';
+
+  @override
+  String get onesignal_subscription_pending =>
+      '尚不可用。请设置 App ID 并重启应用；注册可能需要一些时间。';
+
+  @override
+  String get onesignal_subscription_error => '无法读取 Subscription ID。';
+
+  @override
+  String get onesignal_copy_id => '复制 Subscription ID';
 }
 
 /// The translations for Chinese, using the Han script (`zh_Hans`).
 class AppLocalizationsZhHans extends AppLocalizationsZh {
   AppLocalizationsZhHans() : super('zh_Hans');
+
+  @override
+  String get notification_text_title => '通知';
+
+  @override
+  String get notification_text_may_be_truncated => '通知文本可能被截断。';
+
+  @override
+  String get notification_text_empty => '没有通知文本。';
 
   @override
   String get ai_full_text => 'AI + 全文';
@@ -4782,4 +4839,33 @@ class AppLocalizationsZhHans extends AppLocalizationsZh {
 
   @override
   String get could_not_save_chat_pin => '无法在此设备上保存聊天置顶';
+
+  @override
+  String get onesignal_app_id => 'OneSignal App ID';
+
+  @override
+  String get onesignal_app_id_help =>
+      '输入 App ID（不是 REST API 密钥）。留空则使用构建时的默认值。保存后请重启应用。';
+
+  @override
+  String get onesignal_invalid_id => '请输入有效的 UUID。';
+
+  @override
+  String get onesignal_restart_required => '请重启应用以应用 OneSignal App ID。';
+
+  @override
+  String get onesignal_save_failed => '无法保存 App ID，请重试。';
+
+  @override
+  String get onesignal_subscription_id => 'OneSignal Subscription ID';
+
+  @override
+  String get onesignal_subscription_pending =>
+      '尚不可用。请设置 App ID 并重启应用；注册可能需要一些时间。';
+
+  @override
+  String get onesignal_subscription_error => '无法读取 Subscription ID。';
+
+  @override
+  String get onesignal_copy_id => '复制 Subscription ID';
 }

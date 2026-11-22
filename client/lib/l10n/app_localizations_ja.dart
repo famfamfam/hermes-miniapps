@@ -9,6 +9,15 @@ class AppLocalizationsJa extends AppLocalizations {
   AppLocalizationsJa([String locale = 'ja']) : super(locale);
 
   @override
+  String get notification_text_title => '通知';
+
+  @override
+  String get notification_text_may_be_truncated => '通知のテキストは省略されている場合があります。';
+
+  @override
+  String get notification_text_empty => '通知のテキストはありません。';
+
+  @override
   String get ai_full_text => 'AI + 全文';
 
   @override
@@ -520,6 +529,16 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get cron_deliver_telegram => 'Telegram';
+
+  @override
+  String get cron_deliver_push => 'Push (OneSignal)';
+
+  @override
+  String get cron_deliver_telegram_push => 'Telegram + push';
+
+  @override
+  String get cron_deliver_push_hint =>
+      'OneSignal must be set up for this server profile. Results pass through OneSignal and Firebase.';
 
   @override
   String get cron_deliver_none => 'Nowhere (stays only in Hermes)';
@@ -2492,4 +2511,34 @@ class AppLocalizationsJa extends AppLocalizations {
   String chats_not_deleted(Object count) {
     return 'Not deleted: $count. Try again later.';
   }
+
+  @override
+  String get onesignal_app_id => 'OneSignal App ID';
+
+  @override
+  String get onesignal_app_id_help =>
+      'App ID（REST APIキーではありません）を入力してください。空欄の場合はビルド時の値を使用します。保存後にアプリを再起動してください。';
+
+  @override
+  String get onesignal_invalid_id => '有効なUUIDを入力してください。';
+
+  @override
+  String get onesignal_restart_required =>
+      'OneSignal App IDを適用するにはアプリを再起動してください。';
+
+  @override
+  String get onesignal_save_failed => 'App IDを保存できませんでした。もう一度お試しください。';
+
+  @override
+  String get onesignal_subscription_id => 'OneSignal Subscription ID';
+
+  @override
+  String get onesignal_subscription_pending =>
+      'まだ利用できません。App IDを設定してアプリを再起動してください。登録には時間がかかる場合があります。';
+
+  @override
+  String get onesignal_subscription_error => 'Subscription IDを読み取れませんでした。';
+
+  @override
+  String get onesignal_copy_id => 'Subscription IDをコピー';
 }

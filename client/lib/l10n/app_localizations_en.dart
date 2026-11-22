@@ -9,6 +9,16 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
+  String get notification_text_title => 'Notification';
+
+  @override
+  String get notification_text_may_be_truncated =>
+      'The notification text may be truncated.';
+
+  @override
+  String get notification_text_empty => 'No notification text.';
+
+  @override
   String get ai_full_text => 'AI + full-text';
 
   @override
@@ -531,6 +541,16 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get cron_deliver_telegram => 'Telegram';
+
+  @override
+  String get cron_deliver_push => 'Push (OneSignal)';
+
+  @override
+  String get cron_deliver_telegram_push => 'Telegram + push';
+
+  @override
+  String get cron_deliver_push_hint =>
+      'OneSignal must be set up for this server profile. Results pass through OneSignal and Firebase.';
 
   @override
   String get cron_deliver_none => 'Nowhere (stays only in Hermes)';
@@ -2539,4 +2559,35 @@ class AppLocalizationsEn extends AppLocalizations {
   String chats_not_deleted(Object count) {
     return 'Not deleted: $count. Try again later.';
   }
+
+  @override
+  String get onesignal_app_id => 'OneSignal App ID';
+
+  @override
+  String get onesignal_app_id_help =>
+      'Enter an App ID (not a REST API key). Leave blank to use the build default. Restart the app after saving.';
+
+  @override
+  String get onesignal_invalid_id => 'Enter a valid UUID.';
+
+  @override
+  String get onesignal_restart_required =>
+      'Restart the app to apply the OneSignal App ID.';
+
+  @override
+  String get onesignal_save_failed => 'Could not save the App ID. Try again.';
+
+  @override
+  String get onesignal_subscription_id => 'OneSignal Subscription ID';
+
+  @override
+  String get onesignal_subscription_pending =>
+      'Not available yet. Configure an App ID and restart the app; registration may take time.';
+
+  @override
+  String get onesignal_subscription_error =>
+      'Could not read the Subscription ID.';
+
+  @override
+  String get onesignal_copy_id => 'Copy Subscription ID';
 }

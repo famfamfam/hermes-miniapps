@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test(
-    'Build 0.1.1 has the exact release identity and an upgrade-safe code',
+    'Build 0.2.0 has the exact release identity and an upgrade-safe code',
     () {
       final pubspec = File('pubspec.yaml').readAsStringSync();
       final match = RegExp(
@@ -13,14 +13,24 @@ void main() {
       ).firstMatch(pubspec);
 
       expect(match, isNotNull);
-      expect(match!.group(1), '0.1.1');
+      expect(match!.group(1), '0.2.0');
       expect(int.parse(match.group(2)!), 2163);
-      // Above the 2162 of the last build that was installed from this tree, so it updates in place.
+      // Version codes only determine upgrades within the same application ID.
       expect(int.parse(match.group(2)!), greaterThan(2162));
       // F-Droid ABI split: packaged arm64 code is base * 10 + ABI code.
       expect(int.parse(match.group(2)!) * 10 + 2, 21632);
     },
   );
+
+  test('release and debug use the intended separate application IDs', () {
+    final gradle = File('android/app/build.gradle.kts').readAsStringSync();
+    expect(gradle, contains('applicationId = "dev.hermes.hermes_surfaces"'));
+    expect(gradle, contains('applicationIdSuffix = ".dev"'));
+    expect(
+      gradle,
+      isNot(contains('applicationId = "dev.hermes.hermes_surfaces_example"')),
+    );
+  });
 
   test('Gradle enforces the accepted APK upgrade floor', () {
     final gradle = File('android/app/build.gradle.kts').readAsStringSync();

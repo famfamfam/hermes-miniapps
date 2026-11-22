@@ -119,7 +119,11 @@ Hermes 게이트웨이를 재시작하세요. 키는 loopback에서도 필수이
 
 ### 3. 앱
 
-가장 빠른 방법은 [Releases](https://github.com/famfamfam/hermes-miniapps/releases) 페이지에서 서명된 APK를 받는 것입니다. 휴대폰에서 열거나(브라우저나 파일 관리자에서 앱 설치를 허용해야 합니다) `adb install -r` 로 설치하세요. 모든 릴리스는 프로젝트의 같은 키로 서명되므로 다음 버전을 이전 버전 위에 그대로 설치할 수 있습니다. 직접 빌드하려면:
+가장 빠른 방법은 [Releases](https://github.com/famfamfam/hermes-miniapps/releases) 페이지에서 서명된 APK를 받는 것입니다. 휴대폰에서 열거나(브라우저나 파일 관리자에서 앱 설치를 허용해야 합니다) `adb install -r` 로 설치하세요. 설치된 앱을 업데이트하려면 패키지 ID와 서명 키가 같고 빌드 번호가 적절해야 합니다.
+
+기존 패키지 `dev.hermes.hermes_surfaces_example`의 릴리스와 새 패키지 `dev.hermes.hermes_surfaces`의 앱은 별도로 설치됩니다. 데이터는 서로 분리되며, 데이터와 승인 기기의 키는 자동으로 이전되지 않습니다. 접근 문제가 해결될 때까지 기존 앱을 삭제하지 마세요.
+
+직접 빌드하려면:
 
 ```sh
 cd client
@@ -128,9 +132,9 @@ flutter build apk --release
 adb install -r build/app/outputs/flutter-apk/app-release.apk
 ```
 
-`client/key.properties`가 없으면 릴리스 APK는 이 컴퓨터의 디버그 키로 서명되므로 그대로 설치됩니다. 자신의 키로 서명하려면
+`client/key.properties`가 없으면 릴리스 APK는 이 컴퓨터의 디버그 키로 서명되므로 다른 키로 서명된 앱을 업데이트할 수 없습니다. 자신의 키로 서명하려면
 `storeFile`, `storePassword`, `keyAlias`, `keyPassword`를 담은 `client/key.properties`를 만드세요. 업데이트하려면 같은 애플리케이션 ID
-(`dev.hermes.hermes_surfaces_example`), 같은 키, 더 높은 빌드 번호(`--build-number`)가 필요합니다.
+(`dev.hermes.hermes_surfaces`), 같은 키, 더 높은 빌드 번호(`--build-number`)가 필요합니다.
 
 ### 4. 휴대폰에서 서버에 접속하기
 

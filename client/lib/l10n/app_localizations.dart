@@ -114,6 +114,24 @@ abstract class AppLocalizations {
     Locale.fromSubtags(languageCode: 'zh', scriptCode: 'Hans'),
   ];
 
+  /// No description provided for @notification_text_title.
+  ///
+  /// In en, this message translates to:
+  /// **'Notification'**
+  String get notification_text_title;
+
+  /// No description provided for @notification_text_may_be_truncated.
+  ///
+  /// In en, this message translates to:
+  /// **'The notification text may be truncated.'**
+  String get notification_text_may_be_truncated;
+
+  /// No description provided for @notification_text_empty.
+  ///
+  /// In en, this message translates to:
+  /// **'No notification text.'**
+  String get notification_text_empty;
+
   /// No description provided for @ai_full_text.
   ///
   /// In en, this message translates to:
@@ -998,6 +1016,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Telegram'**
   String get cron_deliver_telegram;
+
+  /// No description provided for @cron_deliver_push.
+  ///
+  /// In en, this message translates to:
+  /// **'Push (OneSignal)'**
+  String get cron_deliver_push;
+
+  /// No description provided for @cron_deliver_telegram_push.
+  ///
+  /// In en, this message translates to:
+  /// **'Telegram + push'**
+  String get cron_deliver_telegram_push;
+
+  /// No description provided for @cron_deliver_push_hint.
+  ///
+  /// In en, this message translates to:
+  /// **'OneSignal must be set up for this server profile. Results pass through OneSignal and Firebase.'**
+  String get cron_deliver_push_hint;
 
   /// No description provided for @cron_deliver_none.
   ///
@@ -4304,6 +4340,60 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Not deleted: {count}. Try again later.'**
   String chats_not_deleted(Object count);
+
+  /// No description provided for @onesignal_app_id.
+  ///
+  /// In en, this message translates to:
+  /// **'OneSignal App ID'**
+  String get onesignal_app_id;
+
+  /// No description provided for @onesignal_app_id_help.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter an App ID (not a REST API key). Leave blank to use the build default. Restart the app after saving.'**
+  String get onesignal_app_id_help;
+
+  /// No description provided for @onesignal_invalid_id.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a valid UUID.'**
+  String get onesignal_invalid_id;
+
+  /// No description provided for @onesignal_restart_required.
+  ///
+  /// In en, this message translates to:
+  /// **'Restart the app to apply the OneSignal App ID.'**
+  String get onesignal_restart_required;
+
+  /// No description provided for @onesignal_save_failed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not save the App ID. Try again.'**
+  String get onesignal_save_failed;
+
+  /// No description provided for @onesignal_subscription_id.
+  ///
+  /// In en, this message translates to:
+  /// **'OneSignal Subscription ID'**
+  String get onesignal_subscription_id;
+
+  /// No description provided for @onesignal_subscription_pending.
+  ///
+  /// In en, this message translates to:
+  /// **'Not available yet. Configure an App ID and restart the app; registration may take time.'**
+  String get onesignal_subscription_pending;
+
+  /// No description provided for @onesignal_subscription_error.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not read the Subscription ID.'**
+  String get onesignal_subscription_error;
+
+  /// No description provided for @onesignal_copy_id.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy Subscription ID'**
+  String get onesignal_copy_id;
 }
 
 class _AppLocalizationsDelegate

@@ -41,7 +41,7 @@ class GatewayJobsClient extends DashboardClient {
       await _own.send(request).timeout(ApiClient.requestTimeout),
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw DashboardHttpException(response.statusCode);
+      throw DashboardHttpException(response.statusCode, _reason(response.body));
     }
     final text = response.body.trim();
     if (text.isEmpty) return const {};
@@ -51,6 +51,22 @@ class GatewayJobsClient extends DashboardClient {
 
   static String _id(String jobId) => Uri.encodeComponent(jobId);
 
+  /// The `{"error": "..."}` text of a refusal, so the person sees why.
+  static String? _reason(String body) {
+    try {
+      final decoded = jsonDecode(body);
+      final error = decoded is Map ? decoded['error'] : null;
+      return error is String && error.isNotEmpty ? error : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// The gateway's PATCH takes only name, schedule, prompt, deliver, skills,
+  /// repeat and enabled: `no_agent` gets a 400 or is dropped.
+  @override
+  bool get canSetScriptOnly => false;
+
   @override
   Future<List<Map<String, dynamic>>> getCronJobs() async {
     final jobs = (await _call('GET', 'jobs'))['jobs'];
@@ -58,8 +74,31 @@ class GatewayJobsClient extends DashboardClient {
   }
 
   @override
-  Future<List<Session>> getCronJobRuns(String jobId, {int limit = 20}) async =>
-      const [];
+  Future<List<Session>> getCronJobRuns(String jobId, {int limit = 20}) async {
+    // Every run is an ordinary session row (`cron_{job id}_{timestamp}`) that
+    // the session list serves most-recent-first, so the run drill-down works
+    // without the dashboard's dedicated runs endpoint.
+    final prefix = 'cron_${jobId}_';
+    final runs = <Session>[];
+    var offset = 0;
+    while (runs.length < limit && offset < 1000) {
+      final data = await _call('GET', 'sessions?limit=200&offset=$offset');
+      final list = data['data'] as List? ?? const [];
+      final page = list
+          .whereType<Map<String, dynamic>>()
+          .map(Session.fromJson)
+          .toList();
+      for (final session in page) {
+        if (session.id.startsWith(prefix)) {
+          runs.add(session);
+          if (runs.length >= limit) break;
+        }
+      }
+      if (data['has_more'] != true || page.isEmpty) break;
+      offset += page.length;
+    }
+    return runs;
+  }
 
   @override
   Future<Map<String, dynamic>> createJob({

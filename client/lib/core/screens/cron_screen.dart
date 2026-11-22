@@ -1,13 +1,14 @@
 // Scheduled tasks (Hermes cron jobs): list and manage them.
 //
 // Two backends behind one screen, chosen by the connection:
-//   * the dashboard (`/api/cron/jobs...`), which also lists each job's runs;
+//   * the dashboard (`/api/cron/jobs...`), whose runs endpoint lists each
+//     job's runs;
 //   * the Gateway API itself (`/api/jobs`), for connections with no dashboard.
-//     It has no run history, so the run drill-down is not offered there.
+//     Both keep run history: a gateway run is an ordinary session row, so the
+//     drill-down lists it from the session list.
 //
-// Where a task sends its result is the `deliver` field. A task created on
-// the phone is sent to Telegram by default: that is where a result reaches
-// the person, because the app has no push channel of its own.
+// A task created on the phone is sent to Telegram by default. OneSignal
+// delivery requires the corresponding server plugin and device setup.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -28,6 +29,8 @@ typedef CronClientFactory = DashboardClient Function(SavedConnection);
 
 /// Where Hermes sends a task's result: the values the phone offers.
 const String cronDeliverTelegram = 'telegram';
+const String cronDeliverPush = 'onesignal';
+const String cronDeliverTelegramPush = 'telegram,onesignal';
 const String cronDeliverLocal = 'local';
 const String cronDeliverOrigin = 'origin';
 
@@ -44,6 +47,8 @@ String? cronDeliveryChipLabel(AppLocalizations l10n, String? deliver) {
   if (deliver == null) return null;
   if (deliver == cronDeliverLocal) return l10n.cron_chip_not_sent;
   if (deliver == cronDeliverOrigin) return l10n.cron_chip_origin;
+  if (deliver == cronDeliverPush) return l10n.cron_deliver_push;
+  if (deliver == cronDeliverTelegramPush) return l10n.cron_deliver_telegram_push;
   if (deliver == cronDeliverTelegram || deliver.startsWith('telegram:')) {
     return l10n.cron_chip_telegram;
   }
@@ -77,15 +82,14 @@ class _CronScreenState extends State<CronScreen> {
   String? _error;
 
   /// Desktop-parity run drill-down: expanding a job loads its run sessions
-  /// (`GET /api/cron/jobs/{id}/runs`) and each run opens as a resumable
-  /// chat transcript. Dashboard connections only: the Gateway API keeps no
-  /// run listing, and an always-empty "no runs yet" would mislead.
+  /// (the dashboard's runs endpoint, or the session list on the Gateway API)
+  /// and each run opens as a resumable chat transcript.
   final Set<String> _expandedJobs = {};
   final Map<String, List<Session>> _runsByJob = {};
   final Set<String> _runsLoading = {};
   final Map<String, String> _runsErrorByJob = {};
 
-  bool get _hasRuns => _client is! GatewayJobsClient;
+  bool get _hasRuns => true;
 
   /// Whether this pane was the visible tab at the last dependency change.
   bool _wasActive = true;
@@ -412,11 +416,15 @@ class _CronScreenState extends State<CronScreen> {
       );
     }
     final now = DateTime.now();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        for (final run in runs)
-          ListTile(
+    // The card wraps this section in a DecoratedBox; the list tiles need
+    // their own Material or their ink is swallowed and debug builds assert.
+    return Material(
+      type: MaterialType.transparency,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final run in runs)
+            ListTile(
             dense: true,
             contentPadding: EdgeInsets.zero,
             leading: Icon(
@@ -448,33 +456,30 @@ class _CronScreenState extends State<CronScreen> {
             ),
             onTap: () => _openRun(run),
           ),
-      ],
+        ],
+      ),
     );
   }
 
   /// Opens the "new task" dialog. Public to the tests through the FAB.
   Future<void> _showAddJobDialog() async {
+    // Creation cannot set the mode atomically; no runnable agent job should
+    // be left behind when a second request fails.
     final result = await _showJobDialog(
       title: context.l10n.add_cron_job,
       actionLabel: context.l10n.add,
       initialDeliver: cronDeliverTelegram,
+      showScriptOnly: false,
     );
     if (result == null || !mounted) return;
 
     try {
-      final created = await _client.createJob(
+      await _client.createJob(
         name: result['name']?.toString() ?? '',
         prompt: result['prompt']?.toString() ?? '',
         schedule: result['schedule']?.toString() ?? '',
         deliver: result['deliver']?.toString() ?? cronDeliverTelegram,
       );
-      if (result['no_agent'] == true) {
-        final jobId =
-            created['id']?.toString() ?? created['job_id']?.toString() ?? '';
-        if (jobId.isNotEmpty) {
-          await _client.updateJob(jobId, {'no_agent': true});
-        }
-      }
       if (!mounted) return;
       _toast(context.l10n.cron_job_added);
       await _loadJobs();
@@ -539,6 +544,7 @@ class _CronScreenState extends State<CronScreen> {
     String initialSchedule = '',
     bool initialNoAgent = false,
     String initialDeliver = cronDeliverTelegram,
+    bool showScriptOnly = true,
   }) {
     return showDialog<Map<String, dynamic>>(
       context: context,
@@ -550,6 +556,7 @@ class _CronScreenState extends State<CronScreen> {
         initialSchedule: initialSchedule,
         initialNoAgent: initialNoAgent,
         initialDeliver: initialDeliver,
+        showScriptOnly: showScriptOnly && _client.canSetScriptOnly,
       ),
     );
   }
@@ -638,9 +645,7 @@ class _CronScreenState extends State<CronScreen> {
     final accent = paused ? tokens.muted : tokens.accent;
 
     return HermesCard(
-      // On a dashboard, a tap expands the run drill-down (desktop parity:
-      // cron output lives under the job). With only the Gateway API there
-      // are no runs to show, so a tap edits the task instead.
+      // A tap expands the run history; editing remains in the card menu.
       onTap: _hasRuns
           ? () => _toggleRuns(jobId)
           : () => _showEditJobDialog(job),
@@ -852,6 +857,9 @@ class _JobDialog extends StatefulWidget {
   final bool initialNoAgent;
   final String initialDeliver;
 
+  /// False when the server cannot switch a task to script-only.
+  final bool showScriptOnly;
+
   const _JobDialog({
     required this.title,
     required this.actionLabel,
@@ -860,6 +868,7 @@ class _JobDialog extends StatefulWidget {
     required this.initialSchedule,
     required this.initialNoAgent,
     required this.initialDeliver,
+    required this.showScriptOnly,
   });
 
   @override
@@ -898,10 +907,21 @@ class _JobDialogState extends State<_JobDialog> {
         child: Text(l10n.cron_deliver_telegram),
       ),
       DropdownMenuItem(
+        value: cronDeliverPush,
+        child: Text(l10n.cron_deliver_push),
+      ),
+      DropdownMenuItem(
+        value: cronDeliverTelegramPush,
+        child: Text(l10n.cron_deliver_telegram_push),
+      ),
+      DropdownMenuItem(
         value: cronDeliverLocal,
         child: Text(l10n.cron_deliver_none),
       ),
-      if (current != cronDeliverTelegram && current != cronDeliverLocal)
+      if (current != cronDeliverTelegram &&
+          current != cronDeliverPush &&
+          current != cronDeliverTelegramPush &&
+          current != cronDeliverLocal)
         DropdownMenuItem(
           value: current,
           child: Text(
@@ -919,7 +939,9 @@ class _JobDialogState extends State<_JobDialog> {
     final prompt = _prompt.text.trim();
     final schedule = _schedule.text.trim();
 
-    if (name.isEmpty || prompt.isEmpty || schedule.isEmpty) {
+    // A script-only task runs a script and has no prompt to fill in.
+    final needsPrompt = !_noAgent;
+    if (name.isEmpty || schedule.isEmpty || (prompt.isEmpty && needsPrompt)) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(l10n.name_prompt_and_schedule_are_required)),
       );
@@ -977,6 +999,9 @@ class _JobDialogState extends State<_JobDialog> {
                 labelText: l10n.cron_deliver_label,
                 helperText: _deliver == cronDeliverTelegram
                     ? l10n.cron_deliver_hint
+                    : (_deliver == cronDeliverPush ||
+                          _deliver == cronDeliverTelegramPush)
+                    ? l10n.cron_deliver_push_hint
                     : null,
                 helperMaxLines: 2,
               ),
@@ -984,14 +1009,16 @@ class _JobDialogState extends State<_JobDialog> {
               onChanged: (value) =>
                   setState(() => _deliver = value ?? _deliver),
             ),
-            const SizedBox(height: HermesSpacing.sm),
-            SwitchListTile(
-              value: _noAgent,
-              contentPadding: EdgeInsets.zero,
-              title: Text(l10n.script_only_no_agent),
-              subtitle: Text(l10n.use_for_cron_jobs_backed_by_scripts),
-              onChanged: (value) => setState(() => _noAgent = value),
-            ),
+            if (widget.showScriptOnly) ...[
+              const SizedBox(height: HermesSpacing.sm),
+              SwitchListTile(
+                value: _noAgent,
+                contentPadding: EdgeInsets.zero,
+                title: Text(l10n.script_only_no_agent),
+                subtitle: Text(l10n.use_for_cron_jobs_backed_by_scripts),
+                onChanged: (value) => setState(() => _noAgent = value),
+              ),
+            ],
           ],
         ),
       ),

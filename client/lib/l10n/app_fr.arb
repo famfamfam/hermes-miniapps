@@ -1,4 +1,7 @@
 {
+  "notification_text_title": "Notification",
+  "notification_text_may_be_truncated": "Le texte de la notification peut être tronqué.",
+  "notification_text_empty": "Aucun texte de notification.",
   "@@locale": "fr",
   "ai_full_text": "IA + texte intégral",
   "ai_search_model": "Modèle de recherche IA",
@@ -648,5 +651,14 @@
   "pin_on_this_device": "Épingler sur cet appareil",
   "unpin_on_this_device": "Désépingler sur cet appareil",
   "pinned_on_this_device": "Épinglés sur cet appareil",
-  "could_not_save_chat_pin": "Impossible d'enregistrer l'épinglage sur cet appareil"
+  "could_not_save_chat_pin": "Impossible d'enregistrer l'épinglage sur cet appareil",
+  "onesignal_app_id": "OneSignal App ID",
+  "onesignal_app_id_help": "Saisissez l’App ID (pas la clé REST API). Laissez vide pour utiliser la valeur de compilation. Redémarrez après l’enregistrement.",
+  "onesignal_invalid_id": "Saisissez un UUID valide.",
+  "onesignal_restart_required": "Redémarrez l’application pour appliquer l’App ID OneSignal.",
+  "onesignal_save_failed": "Impossible d’enregistrer l’App ID. Réessayez.",
+  "onesignal_subscription_id": "OneSignal Subscription ID",
+  "onesignal_subscription_pending": "Pas encore disponible. Configurez l’App ID et redémarrez l’application ; l’inscription peut prendre du temps.",
+  "onesignal_subscription_error": "Impossible de lire le Subscription ID.",
+  "onesignal_copy_id": "Copier le Subscription ID"
 }

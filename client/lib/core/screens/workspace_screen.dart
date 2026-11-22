@@ -193,6 +193,11 @@ class WorkspaceScreen extends StatefulWidget {
   /// Overrides how the Hermes dashboard fallback is opened.
   final DashboardLauncher? onOpenDashboard;
 
+  /// The tab the workspace opens on; defaults per connection shape. A push
+  /// tap uses [HermesDestination.tasks] so the run the push was about is one
+  /// tap away.
+  final HermesDestination? initialDestination;
+
   const WorkspaceScreen({
     required this.connection,
     this.repositoryFactory,
@@ -212,6 +217,7 @@ class WorkspaceScreen extends StatefulWidget {
     this.initialQuickChat = false,
     this.sharedAttachmentPreparer,
     this.onOpenDashboard,
+    this.initialDestination,
     this.sessionsRefreshInterval,
     super.key,
   });
@@ -257,9 +263,15 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
 
   /// The destination currently on screen. The New button is a Home
   /// affordance: over Projects or More it would be ambiguous what it creates.
-  late HermesDestination _destination = _leanMode
-      ? HermesDestination.chats
-      : HermesDestination.home;
+  late HermesDestination _destination = _initialDestination();
+
+  HermesDestination _initialDestination() {
+    final available = _leanMode ? HermesDestination.lean : HermesDestination.full;
+    final requested = widget.initialDestination;
+    return requested != null && available.contains(requested)
+        ? requested
+        : available.first;
+  }
 
   /// The last known attention/running signals. Home ranks with these; an
   /// empty value simply means everything falls back to `Continue working`.
@@ -1521,9 +1533,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
         destinations: _leanMode
             ? HermesDestination.lean
             : HermesDestination.full,
-        initialDestination: _leanMode
-            ? HermesDestination.chats
-            : HermesDestination.home,
+        initialDestination: _destination,
         // The badge is the only attention signal visible from another
         // destination, so blocked work has to raise it even while the user is
         // in Projects or More.

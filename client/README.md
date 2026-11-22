@@ -27,8 +27,23 @@ flutter build apk --release
 
 Without a `key.properties` next to this file the release APK is signed with your machine's debug key, so it installs as
 is. To sign with your own key create `key.properties` with `storeFile`, `storePassword`, `keyAlias` and `keyPassword`.
-The application id is `dev.hermes.hermes_surfaces_example` (change it in `android/app/build.gradle.kts`). An update needs
-the same id, the same key and a higher build number.
+The application id is `dev.hermes.hermes_surfaces` (set in `android/app/build.gradle.kts`). An update needs the same id,
+the same key and a higher build number. Older releases use `dev.hermes.hermes_surfaces_example` and remain separate apps:
+Android does not transfer their data automatically. An encrypted configuration backup can transfer saved connections,
+but not the Surfaces association or approval key. Keep the old app installed and paired until approval access is restored.
+
+OneSignal is optional. In notification settings, enter your OneSignal App ID and restart the app; the ID is stored
+on the device. The Subscription ID is shown there when registration completes and can be copied explicitly.
+A custom APK can instead provide a default at build time:
+
+```sh
+flutter build apk --release --dart-define=ONESIGNAL_APP_ID=your-onesignal-app-id
+```
+
+The saved App ID takes precedence; clearing it restores the build default. Configure the matching Android application in
+Firebase and OneSignal first. An app ID is not a REST API key;
+never put the REST API key or a Firebase service-account key in the app. This enables device registration and
+receiving push notifications; it does not send cron notifications by itself.
 
 ## Code
 

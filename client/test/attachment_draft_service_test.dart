@@ -31,6 +31,7 @@ void main() {
     required int byteLength,
     AttachmentDraftKind kind = AttachmentDraftKind.genericFile,
     AttachmentDraftStatus status = AttachmentDraftStatus.ready,
+    bool? sanitized,
   }) {
     return AttachmentDraft(
       id: name,
@@ -41,7 +42,7 @@ void main() {
           ? 'image/png'
           : 'application/octet-stream',
       kind: kind,
-      sanitized: kind == AttachmentDraftKind.image,
+      sanitized: sanitized ?? kind == AttachmentDraftKind.image,
       status: status,
     );
   }
@@ -146,31 +147,114 @@ void main() {
       );
     });
 
-    test('REST is fail-closed for multiple images and generic files', () {
-      final first = fakeDraft(
-        name: 'first.png',
-        byteLength: 10,
-        kind: AttachmentDraftKind.image,
+    test('REST accepts zero to ten sanitized images, but no other files', () {
+      final images = List.generate(
+        10,
+        (index) => fakeDraft(
+          name: '$index.png',
+          byteLength: 10,
+          kind: AttachmentDraftKind.image,
+        ),
       );
-      final second = fakeDraft(
-        name: 'second.png',
-        byteLength: 10,
-        kind: AttachmentDraftKind.image,
-      );
-      expect(() => service.validateRestDrafts([first]), returnsNormally);
-      expect(allowsMultipleImageSelection(AttachmentDraftMode.rest), isFalse);
+      expect(() => service.validateRestDrafts([]), returnsNormally);
+      expect(() => service.validateRestDrafts([images.first]), returnsNormally);
+      expect(() => service.validateRestDrafts(images), returnsNormally);
       expect(
-        allowsMultipleImageSelection(AttachmentDraftMode.remoteGateway),
-        isTrue,
-      );
-      expect(
-        () => service.validateRestDrafts([first, second]),
+        () => service.validateRestDrafts([
+          ...images,
+          fakeDraft(
+            name: 'eleven.png',
+            byteLength: 1,
+            kind: AttachmentDraftKind.image,
+          ),
+        ]),
         throwsA(isA<AttachmentDraftException>()),
       );
       expect(
         () => service.validateRestDrafts([
           fakeDraft(name: 'document.pdf', byteLength: 10),
         ]),
+        throwsA(isA<AttachmentDraftException>()),
+      );
+      expect(
+        () => service.validateRestDrafts([
+          fakeDraft(
+            name: 'unsafe.png',
+            byteLength: 10,
+            kind: AttachmentDraftKind.image,
+            sanitized: false,
+          ),
+        ]),
+        throwsA(isA<AttachmentDraftException>()),
+      );
+    });
+
+    test('REST enforces the 8 MiB aggregate image budget', () {
+      expect(maxRestImageBytes, 8 * 1024 * 1024);
+      final first = fakeDraft(
+        name: 'first.png',
+        byteLength: maxRestImageBytes - 1,
+        kind: AttachmentDraftKind.image,
+      );
+      final second = fakeDraft(
+        name: 'second.png',
+        byteLength: 1,
+        kind: AttachmentDraftKind.image,
+      );
+      expect(() => service.validateRestDrafts([first, second]), returnsNormally);
+      expect(
+        () => service.validateRestDrafts([
+          first,
+          second,
+          fakeDraft(
+            name: 'overflow.png',
+            byteLength: 1,
+            kind: AttachmentDraftKind.image,
+          ),
+        ]),
+        throwsA(isA<AttachmentDraftException>()),
+      );
+    });
+
+    test('REST preparation accounts for existing image bytes', () async {
+      final source = File('${sandbox.path}${Platform.pathSeparator}source.png');
+      await source.writeAsBytes(
+        image_lib.encodePng(image_lib.Image(width: 2, height: 2)),
+      );
+      Future<AttachmentDraft> prepare(List<AttachmentDraft> existing) =>
+          service.prepareImage(
+            sourcePath: source.path,
+            displayName: 'source.png',
+            existingDrafts: existing,
+            mode: AttachmentDraftMode.rest,
+          );
+
+      final standalone = await prepare([]);
+      expect(standalone.sanitized, isTrue);
+      expect(standalone.byteLength, greaterThan(1));
+      expect(standalone.byteLength, lessThan(maxRestImageBytes));
+      final exact = fakeDraft(
+        name: 'existing.png',
+        byteLength: maxRestImageBytes - standalone.byteLength,
+        kind: AttachmentDraftKind.image,
+      );
+      final added = await prepare([exact]);
+      expect(added.byteLength + exact.byteLength, maxRestImageBytes);
+      final nearlyFull = fakeDraft(
+        name: 'nearly-full.png',
+        byteLength: maxRestImageBytes - 4096,
+        kind: AttachmentDraftKind.image,
+      );
+      final squeezed = await prepare([nearlyFull]);
+      expect(squeezed.byteLength, lessThanOrEqualTo(4096));
+      expect(squeezed.mediaType, 'image/jpeg');
+      final overflow = fakeDraft(
+        name: 'existing-overflow.png',
+        byteLength: exact.byteLength + 1,
+        kind: AttachmentDraftKind.image,
+      );
+      await expectLater(
+        prepare([overflow]),
         throwsA(isA<AttachmentDraftException>()),
       );
     });

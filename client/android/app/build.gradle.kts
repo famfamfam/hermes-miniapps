@@ -29,7 +29,7 @@ android {
            "versionCode ${flutter.versionCode} must be greater than " +
                "$minimumInstalledVersionCode to upgrade the accepted Hermes APK"
        }
-       applicationId = "dev.hermes.hermes_surfaces_example"
+       applicationId = "dev.hermes.hermes_surfaces"
        minSdk = 24
        targetSdk = 36
        versionCode = flutter.versionCode
@@ -58,6 +58,7 @@ android {
            manifestPlaceholders["appLabel"] = "Hermes Agent Dev"
        }
        release {
+           proguardFiles("proguard-rules.pro")
            // Your own key.properties wins; without it the build is signed with
            // the local debug key so `flutter build apk --release` produces an
            // APK that installs as is. Keep using the same machine/key to update.

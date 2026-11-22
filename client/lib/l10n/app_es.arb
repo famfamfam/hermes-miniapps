@@ -1,4 +1,7 @@
 {
+  "notification_text_title": "Notificación",
+  "notification_text_may_be_truncated": "El texto de la notificación puede estar truncado.",
+  "notification_text_empty": "No hay texto de notificación.",
   "@@locale": "es",
   "ai_full_text": "IA + texto completo",
   "ai_search_model": "Modelo de búsqueda con IA",
@@ -648,5 +651,14 @@
   "pin_on_this_device": "Fijar en este dispositivo",
   "unpin_on_this_device": "Dejar de fijar en este dispositivo",
   "pinned_on_this_device": "Fijados en este dispositivo",
-  "could_not_save_chat_pin": "No se pudo guardar el chat fijado en este dispositivo"
+  "could_not_save_chat_pin": "No se pudo guardar el chat fijado en este dispositivo",
+  "onesignal_app_id": "OneSignal App ID",
+  "onesignal_app_id_help": "Introduce el App ID (no la clave REST API). Déjalo vacío para usar el valor de la compilación. Reinicia la aplicación tras guardar.",
+  "onesignal_invalid_id": "Introduce un UUID válido.",
+  "onesignal_restart_required": "Reinicia la aplicación para aplicar el App ID de OneSignal.",
+  "onesignal_save_failed": "No se pudo guardar el App ID. Inténtalo de nuevo.",
+  "onesignal_subscription_id": "OneSignal Subscription ID",
+  "onesignal_subscription_pending": "Aún no disponible. Configura el App ID y reinicia la aplicación; el registro puede tardar.",
+  "onesignal_subscription_error": "No se pudo leer el Subscription ID.",
+  "onesignal_copy_id": "Copiar Subscription ID"
 }

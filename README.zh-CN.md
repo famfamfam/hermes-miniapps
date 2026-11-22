@@ -115,7 +115,11 @@ API_SERVER_PORT=8642
 
 ### 3. 应用
 
-最快的方式是从 [Releases](https://github.com/famfamfam/hermes-miniapps/releases) 页面下载已签名的 APK：在手机上打开它（允许浏览器或文件管理器安装应用），或用 `adb install -r` 安装。每个发布版都用项目的同一把密钥签名，因此后一个版本可以直接覆盖安装前一个。自己构建的方法：
+最快的方式是从 [Releases](https://github.com/famfamfam/hermes-miniapps/releases) 页面下载已签名的 APK：在手机上打开它（允许浏览器或文件管理器安装应用），或用 `adb install -r` 安装。要覆盖更新已安装的应用，包 ID 和签名密钥必须相同，构建号也必须合适。
+
+使用旧包名 `dev.hermes.hermes_surfaces_example` 的发布版与使用新包名 `dev.hermes.hermes_surfaces` 的应用会作为两个独立应用安装。它们的数据相互隔离，数据和审批设备的密钥不会自动迁移。在解决访问问题之前，不要卸载旧应用。
+
+自己构建的方法：
 
 ```sh
 cd client
@@ -124,9 +128,9 @@ flutter build apk --release
 adb install -r build/app/outputs/flutter-apk/app-release.apk
 ```
 
-如果 `client/key.properties` 不存在，发布版 APK 会用你这台机器的调试密钥签名，因此可以直接安装。要用自己的密钥签名，请创建
+如果 `client/key.properties` 不存在，发布版 APK 会用你这台机器的调试密钥签名，因此不能更新用其他密钥签名的应用。要用自己的密钥签名，请创建
 `client/key.properties`，写入 `storeFile`、`storePassword`、`keyAlias` 和 `keyPassword`。更新应用需要相同的应用 ID
-（`dev.hermes.hermes_surfaces_example`）、相同的密钥和更大的构建号（`--build-number`）。
+（`dev.hermes.hermes_surfaces`）、相同的密钥和更大的构建号（`--build-number`）。
 
 ### 4. 让手机连上服务器
 

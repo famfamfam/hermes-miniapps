@@ -1,4 +1,7 @@
 {
+  "notification_text_title": "通知",
+  "notification_text_may_be_truncated": "通知文本可能被截断。",
+  "notification_text_empty": "没有通知文本。",
   "@@locale": "zh_Hans",
   "ai_full_text": "AI + 全文",
   "ai_search_model": "AI 搜索模型",
@@ -648,5 +651,14 @@
   "pin_on_this_device": "在此设备上置顶",
   "unpin_on_this_device": "在此设备上取消置顶",
   "pinned_on_this_device": "在此设备上置顶的聊天",
-  "could_not_save_chat_pin": "无法在此设备上保存聊天置顶"
+  "could_not_save_chat_pin": "无法在此设备上保存聊天置顶",
+  "onesignal_app_id": "OneSignal App ID",
+  "onesignal_app_id_help": "输入 App ID（不是 REST API 密钥）。留空则使用构建时的默认值。保存后请重启应用。",
+  "onesignal_invalid_id": "请输入有效的 UUID。",
+  "onesignal_restart_required": "请重启应用以应用 OneSignal App ID。",
+  "onesignal_save_failed": "无法保存 App ID，请重试。",
+  "onesignal_subscription_id": "OneSignal Subscription ID",
+  "onesignal_subscription_pending": "尚不可用。请设置 App ID 并重启应用；注册可能需要一些时间。",
+  "onesignal_subscription_error": "无法读取 Subscription ID。",
+  "onesignal_copy_id": "复制 Subscription ID"
 }

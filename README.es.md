@@ -128,7 +128,11 @@ túnel, una VPN o una dirección HTTPS con su propia clave. Detalles: [Hermes AP
 
 ### 3. La aplicación
 
-La forma más rápida es el APK firmado de la página [Releases](https://github.com/famfamfam/hermes-miniapps/releases): ábralo en el teléfono (permita instalar desde el navegador o el gestor de archivos) o instálelo con `adb install -r`. Cada versión se firma con la misma clave del proyecto, así que cada una se instala sobre la anterior. Para compilarlo usted mismo:
+La forma más rápida es el APK firmado de la página [Releases](https://github.com/famfamfam/hermes-miniapps/releases): ábralo en el teléfono (permita instalar desde el navegador o el gestor de archivos) o instálelo con `adb install -r`. Para actualizar una aplicación instalada deben coincidir el ID de paquete y la clave de firma, y el número de compilación debe ser adecuado.
+
+El release antiguo con el paquete `dev.hermes.hermes_surfaces_example` y la aplicación con el nuevo paquete `dev.hermes.hermes_surfaces` se instalan por separado. Sus datos están aislados: los datos y la clave del dispositivo aprobador no se transfieren automáticamente. No desinstale la aplicación antigua hasta resolver el acceso.
+
+Para compilarlo usted mismo:
 
 ```sh
 cd client
@@ -137,9 +141,9 @@ flutter build apk --release
 adb install -r build/app/outputs/flutter-apk/app-release.apk
 ```
 
-Sin un `client/key.properties`, el APK de release se firma con la clave de depuración de tu máquina y se instala tal
-cual. Para firmar con tu propia clave, crea `client/key.properties` con `storeFile`, `storePassword`, `keyAlias` y
-`keyPassword`. Una actualización necesita el mismo id de aplicación (`dev.hermes.hermes_surfaces_example`), la misma clave
+Sin un `client/key.properties`, el APK de release se firma con la clave de depuración de tu máquina, por lo que no actualiza
+una aplicación firmada con otra clave. Para firmar con tu propia clave, crea `client/key.properties` con `storeFile`, `storePassword`, `keyAlias` y
+`keyPassword`. Una actualización necesita el mismo id de aplicación (`dev.hermes.hermes_surfaces`), la misma clave
 y un número de compilación mayor (`--build-number`).
 
 ### 4. Llegar al servidor desde el teléfono

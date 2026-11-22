@@ -26,7 +26,7 @@ void main() {
             'image_url': {'url': 'https://example.invalid/image.png'},
           },
         ]),
-        'caption\n\n[Image]',
+        'caption',
       );
     });
 
@@ -45,6 +45,40 @@ void main() {
         messageContentToText(r'first\nsecond'),
         'first\nsecond'.replaceAll(r'\n', '\n'),
       );
+    });
+
+    test('messageImageParts splits image URLs from text parts', () {
+      final (urls, text) = messageImageParts([
+        {'type': 'text', 'text': 'caption'},
+        {
+          'type': 'image_url',
+          'image_url': {'url': 'data:image/jpeg;base64,QUJD'},
+        },
+        {
+          'type': 'image_url',
+          'image_url': {'url': 'https://example.invalid/image.png'},
+        },
+      ]);
+      expect(urls, hasLength(2));
+      expect(urls.first, 'data:image/jpeg;base64,QUJD');
+      expect(text, 'caption');
+      expect(messageImageParts('plain').$1, isEmpty);
+      expect(messageImageParts(null).$2, '');
+    });
+
+    test('messageFileParts extracts inline documents', () {
+      final files = messageFileParts([
+        {
+          'type': 'file',
+          'file': {
+            'filename': 'receipt.pdf',
+            'file_data': 'data:application/pdf;base64,JVBERi0=',
+          },
+        },
+      ]);
+      expect(files, hasLength(1));
+      expect(files.single.name, 'receipt.pdf');
+      expect(files.single.dataUrl, 'data:application/pdf;base64,JVBERi0=');
     });
 
     test('detects and strips raw Hermes tool result wrappers', () {

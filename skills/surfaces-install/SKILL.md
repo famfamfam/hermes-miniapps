@@ -93,6 +93,29 @@ project's repository address and asks you to install it.
 10. **Finish** with a short list: what is installed, what the user still has to do (install the app, paste the line,
     restart the gateway, `/reload-mcp`), and where to look if something fails (README, "Troubleshooting").
 
+## Optional OneSignal platform plugin
+
+Only offer this separately when the user wants push notifications. It does not mirror existing cron deliveries by itself.
+First explain that push text passes through OneSignal and Firebase, delivery is not guaranteed, and this is Python code
+running with the gateway user's permissions. Platform plugins need Hermes `plugins.isolation: in_process`; if the profile
+uses `host`, stop and explain the impact instead of changing it. A multi-profile gateway may not support a platform plugin
+in a secondary hosted profile. Do not claim compatibility until the target Hermes version has been checked.
+
+Identify the OS user and the **actual** `HERMES_HOME` of the intended gateway profile; do not infer it from `sudo`'s home.
+From a reviewed checkout, as that user without sudo, run `python3 tools/install/onesignal.py plan --hermes-home <absolute-profile-home>`.
+Summarize the paths and ask before changes. After a yes, give the user the same command with `apply` to run in their own
+terminal: it asks privately for the OneSignal app ID, API key and subscription ID if the profile has no credentials file.
+Never ask for or accept those values in chat. The mode-0600 file and existing credentials are kept on upgrade. On a refusal,
+stop; do not overwrite a foreign plugin or work around permissions. If a failure happens after credentials were written,
+the next run keeps them. Follow the README if an interrupted upgrade leaves a `.hermes_onesignal.previous` backup.
+
+Installation does not enable the plugin. Run `hermes -p <profile> plugins validate <absolute-profile-home>/plugins/platforms/onesignal`
+and `hermes -p <profile> plugins list` (omit `-p <profile>` for the default profile). Explain what enabling does and ask
+for a **separate** yes; only then run `hermes -p <profile> plugins enable onesignal` for that same profile. The installer
+does not modify Hermes configuration, isolation or services. Do not restart the gateway: give the user the appropriate
+command. The plugin's valid credentials configure `phone` as its home target, but do not change existing cron jobs.
+For upgrades repeat plan and, after agreement, apply; unchanged files and credentials are retained.
+
 ## Uninstall
 
 Only when the user asks. `sudo python3 tools/install/install.py uninstall` removes the service and code and keeps data

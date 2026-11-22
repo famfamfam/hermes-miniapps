@@ -49,6 +49,35 @@ void main() {
     expect(restored?.reasoningEffort, isNull);
   });
 
+  test('ignores legacy API effort and restores the new API override', () async {
+    final store = await ChatModelOverrideStore.open();
+    await store.save(
+      connectionIdentity: 'connection-a',
+      sessionId: 'chat-1',
+      provider: 'custom',
+      model: 'model-a',
+      reasoningEffort: 'medium',
+    );
+    expect(store.read(connectionIdentity: 'connection-a', sessionId: 'chat-1')?.apiReasoningEffort, isNull);
+
+    await store.save(
+      connectionIdentity: 'connection-a',
+      sessionId: 'chat-1',
+      provider: 'custom',
+      model: 'model-a',
+      apiReasoningEffort: 'high',
+    );
+    expect(store.read(connectionIdentity: 'connection-a', sessionId: 'chat-1')?.apiReasoningEffort, 'high');
+    expect(store.read(connectionIdentity: 'connection-a', sessionId: 'chat-2'), isNull);
+    await store.save(
+      connectionIdentity: 'connection-a',
+      sessionId: 'chat-1',
+      provider: 'custom',
+      model: 'model-a',
+    );
+    expect(store.read(connectionIdentity: 'connection-a', sessionId: 'chat-1')?.apiReasoningEffort, isNull);
+  });
+
   test('does not leak an override into another chat', () async {
     final store = await ChatModelOverrideStore.open();
     await store.save(

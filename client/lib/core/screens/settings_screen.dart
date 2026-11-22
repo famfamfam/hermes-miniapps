@@ -2,12 +2,15 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/config_backup_io.dart';
 import '../services/config_backup_service.dart';
 import '../services/connection_manager.dart';
 import '../services/notification_prefs.dart';
+import '../services/one_signal_service.dart';
 import '../services/turn_notification_service.dart';
 import '../widgets/chat_wallpaper.dart';
 import '../widgets/config_backup_card.dart';
@@ -868,9 +871,124 @@ class _NotificationSettings extends StatefulWidget {
 }
 
 class _NotificationSettingsState extends State<_NotificationSettings> {
+  String? _subscriptionId;
+  bool _subscriptionReadFailed = false;
+  int _subscriptionVersion = 0;
+
+  void _subscriptionChanged(OSPushSubscriptionChangedState state) {
+    _subscriptionVersion++;
+    if (mounted) {
+      setState(() {
+        _subscriptionId = state.current.id;
+        _subscriptionReadFailed = false;
+      });
+    }
+  }
+
+  Future<void> _readSubscription() async {
+    final version = _subscriptionVersion;
+    try {
+      final id = await OneSignalService.readSubscriptionId();
+      if (mounted && version == _subscriptionVersion) {
+        setState(() => _subscriptionId = id);
+      }
+    } catch (_) {
+      if (mounted && version == _subscriptionVersion) {
+        setState(() => _subscriptionReadFailed = true);
+      }
+    }
+  }
+
+  Future<void> _editAppId() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    final controller = TextEditingController(
+      text: prefs.getString(OneSignalService.appIdKey) ?? '',
+    );
+    String? error;
+    var saving = false;
+    final route = DialogRoute<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: Text(context.l10n.onesignal_app_id),
+          content: TextField(
+            controller: controller,
+            enabled: !saving,
+            autocorrect: false,
+            enableSuggestions: false,
+            decoration: InputDecoration(
+              labelText: context.l10n.onesignal_app_id,
+              helperText: context.l10n.onesignal_app_id_help,
+              helperMaxLines: 5,
+              errorText: error,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: saving ? null : () => Navigator.pop(dialogContext),
+              child: Text(context.l10n.cancel),
+            ),
+            FilledButton(
+              onPressed: saving
+                  ? null
+                  : () async {
+                      final value = controller.text.trim();
+                      if (value.isNotEmpty &&
+                          !OneSignalService.isValidAppId(value)) {
+                        setDialogState(
+                          () => error = context.l10n.onesignal_invalid_id,
+                        );
+                        return;
+                      }
+                      setDialogState(() {
+                        saving = true;
+                        error = null;
+                      });
+                      try {
+                        final saved = await OneSignalService.saveAppId(
+                          prefs,
+                          value,
+                        );
+                        if (!dialogContext.mounted || !mounted) return;
+                        if (!saved) {
+                          throw StateError('Preferences write failed');
+                        }
+                        Navigator.pop(dialogContext);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              context.l10n.onesignal_restart_required,
+                            ),
+                          ),
+                        );
+                      } catch (_) {
+                        if (dialogContext.mounted) {
+                          setDialogState(() {
+                            saving = false;
+                            error = context.l10n.onesignal_save_failed;
+                          });
+                        }
+                      }
+                    },
+              child: Text(context.l10n.save),
+            ),
+          ],
+        ),
+      ),
+    );
+    await Navigator.of(context).push(route);
+    await route.completed;
+    controller.dispose();
+  }
+
   @override
   void initState() {
     super.initState();
+    if (OneSignalService.initialized) {
+      OneSignalService.addObserver(_subscriptionChanged);
+      unawaited(_readSubscription());
+    }
     // Resolve the Android 13+ permission state so a denied app shows the hint
     // instead of looking silently broken.
     unawaited(
@@ -878,6 +996,14 @@ class _NotificationSettingsState extends State<_NotificationSettings> {
         if (mounted) setState(() {});
       }),
     );
+  }
+
+  @override
+  void dispose() {
+    if (OneSignalService.initialized) {
+      OneSignalService.removeObserver(_subscriptionChanged);
+    }
+    super.dispose();
   }
 
   static String _kindLabel(BuildContext context, HermesNotificationKind kind) =>
@@ -956,6 +1082,33 @@ class _NotificationSettingsState extends State<_NotificationSettings> {
                     : null,
               ),
             ],
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.settings_outlined),
+              title: Text(context.l10n.onesignal_app_id),
+              subtitle: Text(context.l10n.onesignal_restart_required),
+              onTap: _editAppId,
+            ),
+            const Divider(height: 1),
+            ListTile(
+              title: Text(context.l10n.onesignal_subscription_id),
+              subtitle: SelectableText(
+                _subscriptionReadFailed
+                    ? context.l10n.onesignal_subscription_error
+                    : OneSignalService.isRegistered(_subscriptionId)
+                    ? _subscriptionId!
+                    : context.l10n.onesignal_subscription_pending,
+              ),
+              trailing: OneSignalService.isRegistered(_subscriptionId)
+                  ? IconButton(
+                      tooltip: context.l10n.onesignal_copy_id,
+                      icon: const Icon(Icons.copy),
+                      onPressed: () => Clipboard.setData(
+                        ClipboardData(text: _subscriptionId!),
+                      ),
+                    )
+                  : null,
+            ),
             const Divider(height: 1),
             ListTile(
               leading: const Icon(Icons.send_outlined),

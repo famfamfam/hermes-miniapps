@@ -124,8 +124,8 @@ an HTTPS address with its own key. Details: [Hermes API server](https://hermes-a
 ### 3. The app
 
 The quickest way is the signed APK from the [Releases](https://github.com/famfamfam/hermes-miniapps/releases) page: open it
-on the phone (allow installs from your browser or file manager) or `adb install -r` it. Every release is signed with the
-project's one key, so each can be installed over the previous one. To build it yourself:
+on the phone (allow installs from your browser or file manager) or `adb install -r` it. An update requires the same
+application ID and signing key, and a higher build number. To build it yourself:
 
 ```sh
 cd client
@@ -136,8 +136,13 @@ adb install -r build/app/outputs/flutter-apk/app-release.apk
 
 Without a `client/key.properties` the release APK is signed with your machine's debug key, so it installs as is. To sign
 with your own key create `client/key.properties` with `storeFile`, `storePassword`, `keyAlias` and `keyPassword`. An
-update needs the same application id (`dev.hermes.hermes_surfaces_example`), the same key and a higher build number
-(`--build-number`).
+update needs the same application id (`dev.hermes.hermes_surfaces` for the current source), the same key and a higher
+build number (`--build-number`).
+
+Older releases use `dev.hermes.hermes_surfaces_example`: a build from the current source installs alongside them, not
+as an update, and Android does not automatically transfer their data. The encrypted configuration backup can transfer
+saved connections, but not the Surfaces association or approval key. Keep the old app installed and paired until you
+have a safe way to restore approval access in the new app.
 
 ### 4. Reach the server from the phone
 
@@ -228,6 +233,49 @@ Delete app: it moves to the server's trash for 30 days (`ms_admin trash`, `ms_ad
 Buttons that save, mark or delete work without a model: Hermes declares each one as a named change to the app's own
 database, you approve it together with the app, and anything that deletes asks you again on the phone. When a button needs
 the agent itself (generate a picture, read a PDF), it sends Hermes a message that you read and send yourself.
+
+## Optional OneSignal platform plugin
+
+The optional outbound-only plugin can send a text push to one OneSignal subscription. It is separate from the Surfaces
+server and does not mirror existing cron deliveries automatically. Notification text goes through OneSignal and Firebase;
+acceptance by OneSignal is not proof of delivery. Read the plugin source before enabling it: Hermes platform plugins run
+with the gateway user's permissions and need `plugins.isolation: in_process`. This installer does not change isolation.
+In particular, do not switch an existing `host` isolation setting without understanding and consenting to the impact on
+other plugins. Compatibility with your Hermes version must be checked; the installer does not check the Hermes API.
+
+From a trusted, reviewed checkout, as the **OS user running the target Hermes gateway** (not `sudo`), set `PROFILE_HOME`
+to that gateway's existing absolute `HERMES_HOME`. For the default profile it is normally `$HOME/.hermes`; for a named
+profile select its own home. Verify this is the same profile the gateway actually uses, then run:
+
+```sh
+PROFILE_HOME="$HOME/.hermes"  # replace with the target profile's absolute home when needed
+python3 tools/install/onesignal.py plan --hermes-home "$PROFILE_HOME"
+python3 tools/install/onesignal.py apply --hermes-home "$PROFILE_HOME"
+```
+
+`plan` writes nothing. After reviewing it, `apply` copies the plugin to
+`$PROFILE_HOME/plugins/platforms/onesignal` and, only if missing, prompts privately in the terminal for the OneSignal app
+ID, API key and subscription ID. It creates `$PROFILE_HOME/onesignal.json` owned by this user with mode 0600; existing
+valid credentials are kept. Never paste these values into a chat, command arguments or repository. A terminal that cannot
+hide input is refused. The installer does not print the values. It requires Linux, a user-owned profile and safe directory
+permissions; it refuses an unmanaged or locally modified plugin instead of overwriting it.
+
+The installation does not enable the plugin, edit config or restart a service. After checking isolation, inspect it with
+`hermes plugins validate "$PROFILE_HOME/plugins/platforms/onesignal"` and `hermes plugins list`, using the **same** Hermes
+profile. For a named profile use `hermes -p <profile> plugins ...` instead. Only if you explicitly trust and consent to
+running it, run `hermes plugins enable onesignal` (or `hermes -p <profile> plugins enable onesignal`). Check the target
+Hermes version's platform configuration and restart its gateway yourself when appropriate. Valid credentials configure
+`phone` as the plugin's home target; this does not itself change existing cron jobs. Tasks using Hermes' `all` route can
+start including this phone once the plugin is enabled. An `origin` task with no originating chat may also fall back to a
+home channel. Review those tasks before enabling it. In the Android app, select **Push (OneSignal)** or **Telegram +
+push** for each task that should use the new channel.
+
+To upgrade, review the new checkout and repeat `plan` then `apply`: unchanged files are left alone, credentials and other
+plugins are kept, and a modified managed file causes a refusal. An interrupted directory switch leaves a
+`.hermes_onesignal.previous` backup under `plugins/platforms`; inspect the backup and destination and resolve the
+interrupted upgrade without overwriting either before retrying. An error after
+credentials are created may leave the private file in place; the next run will keep it. The existing Surfaces installer
+and its upgrade/uninstall commands do not install or remove this plugin or its credentials.
 
 ## Upgrade and uninstall
 

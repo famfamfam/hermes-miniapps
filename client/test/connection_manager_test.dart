@@ -790,7 +790,7 @@ void main() {
 
       final messages = GatewayChatClient.buildChatCompletionMessages(
         message: 'What is in this image?',
-        imageDataUrl: dataUrl,
+        imageDataUrls: [dataUrl],
       );
 
       expect(messages, [
@@ -804,6 +804,47 @@ void main() {
             },
           ],
         },
+      ]);
+    });
+
+    test('builds ordered image_url parts in one user message', () {
+      const first = 'data:image/jpeg;base64,Zmlyc3Q=';
+      const second = 'data:image/png;base64,c2Vjb25k';
+      final messages = GatewayChatClient.buildChatCompletionMessages(
+        message: 'Compare these images.',
+        history: [
+          {'role': 'assistant', 'content': 'Ready.'},
+        ],
+        imageDataUrls: [first, second],
+      );
+
+      expect(messages, [
+        {'role': 'assistant', 'content': 'Ready.'},
+        {
+          'role': 'user',
+          'content': [
+            {'type': 'text', 'text': 'Compare these images.'},
+            {
+              'type': 'image_url',
+              'image_url': {'url': first},
+            },
+            {
+              'type': 'image_url',
+              'image_url': {'url': second},
+            },
+          ],
+        },
+      ]);
+    });
+
+    test('an empty image list keeps text-only message content', () {
+      final messages = GatewayChatClient.buildChatCompletionMessages(
+        message: 'Text only',
+        imageDataUrls: const [],
+      );
+
+      expect(messages, [
+        {'role': 'user', 'content': 'Text only'},
       ]);
     });
 

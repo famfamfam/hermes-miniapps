@@ -9,6 +9,15 @@ class AppLocalizationsKo extends AppLocalizations {
   AppLocalizationsKo([String locale = 'ko']) : super(locale);
 
   @override
+  String get notification_text_title => '알림';
+
+  @override
+  String get notification_text_may_be_truncated => '알림 텍스트가 잘렸을 수 있습니다.';
+
+  @override
+  String get notification_text_empty => '알림 텍스트가 없습니다.';
+
+  @override
   String get ai_full_text => 'AI + 전문 검색';
 
   @override
@@ -518,6 +527,16 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get cron_deliver_telegram => 'Telegram';
+
+  @override
+  String get cron_deliver_push => 'Push (OneSignal)';
+
+  @override
+  String get cron_deliver_telegram_push => 'Telegram + push';
+
+  @override
+  String get cron_deliver_push_hint =>
+      'OneSignal must be set up for this server profile. Results pass through OneSignal and Firebase.';
 
   @override
   String get cron_deliver_none => 'Nowhere (stays only in Hermes)';
@@ -2493,4 +2512,34 @@ class AppLocalizationsKo extends AppLocalizations {
   String chats_not_deleted(Object count) {
     return 'Not deleted: $count. Try again later.';
   }
+
+  @override
+  String get onesignal_app_id => 'OneSignal App ID';
+
+  @override
+  String get onesignal_app_id_help =>
+      'App ID를 입력하세요(REST API 키가 아님). 비워 두면 빌드 기본값을 사용합니다. 저장 후 앱을 다시 시작하세요.';
+
+  @override
+  String get onesignal_invalid_id => '올바른 UUID를 입력하세요.';
+
+  @override
+  String get onesignal_restart_required =>
+      'OneSignal App ID를 적용하려면 앱을 다시 시작하세요.';
+
+  @override
+  String get onesignal_save_failed => 'App ID를 저장하지 못했습니다. 다시 시도하세요.';
+
+  @override
+  String get onesignal_subscription_id => 'OneSignal Subscription ID';
+
+  @override
+  String get onesignal_subscription_pending =>
+      '아직 사용할 수 없습니다. App ID를 설정하고 앱을 다시 시작하세요. 등록에 시간이 걸릴 수 있습니다.';
+
+  @override
+  String get onesignal_subscription_error => 'Subscription ID를 읽지 못했습니다.';
+
+  @override
+  String get onesignal_copy_id => 'Subscription ID 복사';
 }

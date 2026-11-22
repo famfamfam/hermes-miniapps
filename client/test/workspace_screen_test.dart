@@ -195,6 +195,7 @@ Future<void> _pump(
   String? initialSharedText,
   AndroidSharePayload? initialSharedPayload,
   bool initialQuickChat = false,
+  HermesDestination? initialDestination,
   SharedAttachmentPreparer? sharedAttachmentPreparer,
   Size size = const Size(400, 800),
 }) async {
@@ -230,6 +231,7 @@ Future<void> _pump(
         initialSharedText: initialSharedText,
         initialSharedPayload: initialSharedPayload,
         initialQuickChat: initialQuickChat,
+        initialDestination: initialDestination,
         sharedAttachmentPreparer: sharedAttachmentPreparer,
         onOpenDashboard: openedDashboards == null
             ? null
@@ -2172,6 +2174,17 @@ void main() {
         findsNothing,
         reason: 'Apps is a tab; the toolbar does not repeat it',
       );
+    });
+
+    testWidgets('opens directly on the requested Tasks tab', (tester) async {
+      await _pump(
+        tester,
+        connection: _gatewayOnlyConnection(),
+        initialDestination: HermesDestination.tasks,
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(CronScreen), findsOneWidget);
+      expect(find.byType(WorkspaceSessionsScreen), findsNothing);
     });
 
     testWidgets('Tasks shows the task list inside the shell', (tester) async {

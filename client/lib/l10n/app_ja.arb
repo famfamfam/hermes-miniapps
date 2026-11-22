@@ -1,4 +1,7 @@
 {
+  "notification_text_title": "通知",
+  "notification_text_may_be_truncated": "通知のテキストは省略されている場合があります。",
+  "notification_text_empty": "通知のテキストはありません。",
   "@@locale": "ja",
   "ai_full_text": "AI + 全文",
   "ai_search_model": "AI検索モデル",
@@ -648,5 +651,14 @@
   "pin_on_this_device": "この端末でピン留め",
   "unpin_on_this_device": "この端末でピン留めを解除",
   "pinned_on_this_device": "この端末でピン留め中",
-  "could_not_save_chat_pin": "この端末でチャットのピン留めを保存できませんでした"
+  "could_not_save_chat_pin": "この端末でチャットのピン留めを保存できませんでした",
+  "onesignal_app_id": "OneSignal App ID",
+  "onesignal_app_id_help": "App ID（REST APIキーではありません）を入力してください。空欄の場合はビルド時の値を使用します。保存後にアプリを再起動してください。",
+  "onesignal_invalid_id": "有効なUUIDを入力してください。",
+  "onesignal_restart_required": "OneSignal App IDを適用するにはアプリを再起動してください。",
+  "onesignal_save_failed": "App IDを保存できませんでした。もう一度お試しください。",
+  "onesignal_subscription_id": "OneSignal Subscription ID",
+  "onesignal_subscription_pending": "まだ利用できません。App IDを設定してアプリを再起動してください。登録には時間がかかる場合があります。",
+  "onesignal_subscription_error": "Subscription IDを読み取れませんでした。",
+  "onesignal_copy_id": "Subscription IDをコピー"
 }

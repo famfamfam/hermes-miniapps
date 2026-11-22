@@ -40,3 +40,5 @@ key.properties*
 *.properties.off
 # private notes for AI agents
 AGENTS.md
+# the author's private working folder (SDK, caches, keys, builds)
+/private/

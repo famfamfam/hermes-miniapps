@@ -1,4 +1,7 @@
 {
+  "notification_text_title": "Уведомление",
+  "notification_text_may_be_truncated": "Текст уведомления может быть сокращён.",
+  "notification_text_empty": "Текст уведомления отсутствует.",
   "@@locale": "ru",
   "ai_full_text": "ИИ + полный текст",
   "ai_search_model": "Модель ИИ-поиска",
@@ -149,6 +152,9 @@
   "cron_resume": "Возобновить",
   "cron_deliver_label": "Куда прислать результат",
   "cron_deliver_telegram": "Telegram",
+  "cron_deliver_push": "Push (OneSignal)",
+  "cron_deliver_telegram_push": "Telegram + push",
+  "cron_deliver_push_hint": "Настройте OneSignal для этого профиля сервера. Результаты проходят через OneSignal и Firebase.",
   "cron_deliver_none": "Никуда (остаётся только в Hermes)",
   "cron_deliver_origin": "В чат, откуда создана задача",
   "cron_deliver_other": "Другое: {value}",
@@ -694,5 +700,14 @@
   "delete_chats_title": "Удалить чаты: {count}?",
   "delete_chats_body": "Они будут удалены из истории Hermes на сервере. Отменить это нельзя.",
   "chats_deleted": "Удалено чатов: {count}",
-  "chats_not_deleted": "Не удалось удалить: {count}. Попробуйте позже."
+  "chats_not_deleted": "Не удалось удалить: {count}. Попробуйте позже.",
+  "onesignal_app_id": "OneSignal App ID",
+  "onesignal_app_id_help": "Введите App ID (не REST API key). Пустое поле вернёт значение сборки. После сохранения перезапустите приложение.",
+  "onesignal_invalid_id": "Введите корректный UUID.",
+  "onesignal_restart_required": "Перезапустите приложение, чтобы применить OneSignal App ID.",
+  "onesignal_save_failed": "Не удалось сохранить App ID. Попробуйте ещё раз.",
+  "onesignal_subscription_id": "OneSignal Subscription ID",
+  "onesignal_subscription_pending": "Пока недоступен. Укажите App ID и перезапустите приложение; регистрация может занять время.",
+  "onesignal_subscription_error": "Не удалось получить Subscription ID.",
+  "onesignal_copy_id": "Скопировать Subscription ID"
 }

@@ -6,11 +6,13 @@ class ChatModelOverride {
   final String provider;
   final String model;
   final String? reasoningEffort;
+  final String? apiReasoningEffort;
 
   const ChatModelOverride({
     required this.provider,
     required this.model,
     this.reasoningEffort,
+    this.apiReasoningEffort,
   });
 }
 
@@ -42,6 +44,10 @@ class ChatModelOverrideStore {
     final reasoningEffort = _preferences.getString(
       _key(connectionIdentity, sessionId, 'reasoning_effort'),
     );
+    // Legacy REST values were saved without being applied to the server.
+    final apiReasoningEffort = _preferences.getString(
+      _key(connectionIdentity, sessionId, 'api_reasoning_effort'),
+    );
     if (provider == null ||
         provider.trim().isEmpty ||
         model == null ||
@@ -54,6 +60,9 @@ class ChatModelOverrideStore {
       reasoningEffort: reasoningEffort?.trim().isEmpty == false
           ? reasoningEffort!.trim()
           : null,
+      apiReasoningEffort: apiReasoningEffort?.trim().isEmpty == false
+          ? apiReasoningEffort!.trim()
+          : null,
     );
   }
 
@@ -63,6 +72,7 @@ class ChatModelOverrideStore {
     required String provider,
     required String model,
     String? reasoningEffort,
+    String? apiReasoningEffort,
   }) async {
     final normalizedProvider = provider.trim();
     final normalizedModel = model.trim();
@@ -83,6 +93,17 @@ class ChatModelOverrideStore {
       await _preferences.remove(effortKey);
     } else {
       await _preferences.setString(effortKey, normalizedEffort);
+    }
+    final apiEffortKey = _key(
+      connectionIdentity,
+      sessionId,
+      'api_reasoning_effort',
+    );
+    final normalizedApiEffort = apiReasoningEffort?.trim().toLowerCase() ?? '';
+    if (normalizedApiEffort.isEmpty) {
+      await _preferences.remove(apiEffortKey);
+    } else {
+      await _preferences.setString(apiEffortKey, normalizedApiEffort);
     }
   }
 

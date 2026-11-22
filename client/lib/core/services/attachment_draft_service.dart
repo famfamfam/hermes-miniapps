@@ -16,8 +16,18 @@ const maxRemoteAttachmentDraftBytes = 64 * 1024 * 1024;
 /// Existing per-item limit for generic files: exactly 16 MiB.
 const maxGenericAttachmentBytes = 16 * 1024 * 1024;
 
-/// The legacy REST transport remains single-image and proxy-budgeted.
-const maxRestImageBytes = 680 * 1024;
+/// Legacy REST budget for all images of one turn: 8 MiB. Server-side the
+/// nginx edge accepts 25 MB per request, so even after base64 (×4/3) the
+/// request stays well under the limit. Original value 680 KiB was far below
+/// what the deployment accepts and forced aggressive photo compression.
+const maxRestImageBytes = 8 * 1024 * 1024;
+
+/// Whole-turn REST budget across images and documents: 16 MiB raw, so the
+/// base64 request body stays under the 25 MB nginx limit with headroom.
+const maxRestTurnBytes = 16 * 1024 * 1024;
+
+/// One REST document: the gateway stores chat uploads up to 10 MiB.
+const maxRestFileBytes = 10 * 1024 * 1024;
 
 final _mediaTypePattern = RegExp(
   r'^[a-zA-Z0-9][a-zA-Z0-9!#$&^_.+-]*/[a-zA-Z0-9][a-zA-Z0-9!#$&^_.+-]*$',
@@ -31,9 +41,6 @@ String _safeMediaType(String value) {
 }
 
 enum AttachmentDraftMode { remoteGateway, rest }
-
-bool allowsMultipleImageSelection(AttachmentDraftMode mode) =>
-    mode == AttachmentDraftMode.remoteGateway;
 
 typedef AttachmentCacheDirectoryProvider = Future<Directory> Function();
 typedef AttachmentCacheFileWriter =
@@ -158,9 +165,7 @@ class AttachmentDraftService {
         'The selected image exceeds the 64 MiB draft budget.',
       );
     }
-    if (mode == AttachmentDraftMode.remoteGateway) {
-      _ensureRemoteSlot(existingDrafts);
-    }
+    _ensureRemoteSlot(existingDrafts);
 
     Uint8List? sourceBytes;
     image_lib.Image? decoded;
@@ -189,28 +194,61 @@ class AttachmentDraftService {
         ..iccProfile = null
         ..textData = null;
 
-      final outputIsJpeg = format == AttachmentImageFormat.jpeg;
-      Uint8List? outputBytes = outputIsJpeg
+      var useJpeg = format == AttachmentImageFormat.jpeg;
+      final existingBytes = existingDrafts.fold<int>(
+        0, (total, draft) => total + draft.byteLength,
+      );
+      // REST carries every image of a turn in one shared budget: re-encode
+      // downward instead of rejecting the pick.
+      final remainingBytes = mode == AttachmentDraftMode.rest
+          ? maxRestImageBytes - existingBytes
+          : null;
+      Uint8List outputBytes = useJpeg
           ? image_lib.encodeJpg(sanitized, quality: 85)
           : image_lib.encodePng(sanitized, level: 6);
+      if (remainingBytes != null && outputBytes.length > remainingBytes) {
+        // Quality alone is not enough for camera photos: also shrink
+        // resolution until the remaining budget accepts the result.
+        Uint8List? smaller;
+        for (final scale in const [1.0, 0.75, 0.5, 0.35, 0.25]) {
+          final base = scale == 1.0
+              ? sanitized
+              : image_lib.copyResize(
+                  sanitized,
+                  width: (sanitized.width * scale).round(),
+                  height: (sanitized.height * scale).round(),
+                );
+          for (var quality = 70; quality >= 25; quality -= 15) {
+            final candidate = image_lib.encodeJpg(base, quality: quality);
+            if (candidate.length <= remainingBytes) {
+              smaller = candidate;
+              break;
+            }
+          }
+          if (smaller != null) break;
+        }
+        if (smaller == null) {
+          throw const AttachmentDraftException(
+            'The sanitized images exceed the legacy REST limit.',
+          );
+        }
+        outputBytes = smaller;
+        useJpeg = true;
+      }
       sanitized = image_lib.Image(width: 1, height: 1);
 
       final outputLength = outputBytes.length;
-      if (mode == AttachmentDraftMode.rest &&
-          outputLength > maxRestImageBytes) {
-        throw const AttachmentDraftException(
-          'The sanitized image is too large for the legacy REST limit.',
-        );
-      }
       if (mode == AttachmentDraftMode.remoteGateway) {
         _ensureRemoteAggregate(existingDrafts, outputLength);
       }
 
-      final extension = outputIsJpeg ? 'jpg' : 'png';
+      final extension = useJpeg ? 'jpg' : 'png';
       final outputName = _replaceExtension(displayName, extension);
       destination = await _newCacheFile(extension);
       await _cacheFileWriter(destination, outputBytes);
-      outputBytes = null;
+      // Mem-bounded: the encoder output is written out and the reference is
+      // dropped right after, matching the original null-out hygiene.
+      outputBytes = Uint8List(0);
       final outputStat = await destination.stat();
       committed = true;
       return AttachmentDraft(
@@ -218,7 +256,7 @@ class AttachmentDraftService {
         cachedPath: destination.path,
         name: outputName,
         byteLength: outputStat.size,
-        mediaType: outputIsJpeg ? 'image/jpeg' : 'image/png',
+        mediaType: useJpeg ? 'image/jpeg' : 'image/png',
         kind: AttachmentDraftKind.image,
         sourceImageFormat: format,
         sanitized: true,
@@ -243,6 +281,7 @@ class AttachmentDraftService {
     required String displayName,
     String mediaType = 'application/octet-stream',
     required Iterable<AttachmentDraft> existingDrafts,
+    AttachmentDraftMode mode = AttachmentDraftMode.remoteGateway,
   }) async {
     _ensureRemoteSlot(existingDrafts);
     if (isSensitiveFileName(displayName)) {
@@ -257,12 +296,26 @@ class AttachmentDraftService {
         'The selected file is empty or unreadable.',
       );
     }
-    if (stat.size > maxGenericAttachmentBytes) {
+    final perFileLimit = mode == AttachmentDraftMode.rest
+        ? maxRestFileBytes
+        : maxGenericAttachmentBytes;
+    if (stat.size > perFileLimit) {
       throw const AttachmentDraftException(
-        'Generic files are limited to 16 MiB each.',
+        'The selected file is too large to attach.',
       );
     }
-    _ensureRemoteAggregate(existingDrafts, stat.size);
+    if (mode == AttachmentDraftMode.rest) {
+      final existingBytes = existingDrafts.fold<int>(
+        0, (total, draft) => total + draft.byteLength,
+      );
+      if (existingBytes + stat.size > maxRestTurnBytes) {
+        throw const AttachmentDraftException(
+          'Attachments are limited to 16 MiB total per message.',
+        );
+      }
+    } else {
+      _ensureRemoteAggregate(existingDrafts, stat.size);
+    }
 
     final destination = await _newCacheFile('bin');
     try {
@@ -291,7 +344,7 @@ class AttachmentDraftService {
     final snapshot = drafts.toList(growable: false);
     if (snapshot.length > maxRemoteAttachmentDrafts) {
       throw const AttachmentDraftException(
-        'You can attach up to 10 items to one Remote Gateway draft.',
+        'You can attach up to 10 items to one message.',
       );
     }
     final total = snapshot.fold<int>(0, (sum, draft) => sum + draft.byteLength);
@@ -317,15 +370,33 @@ class AttachmentDraftService {
 
   void validateRestDrafts(Iterable<AttachmentDraft> drafts) {
     final snapshot = drafts.toList(growable: false);
-    if (snapshot.length > 1 ||
-        snapshot.any((draft) => !draft.isImage || !draft.sanitized)) {
+    if (snapshot.length > maxRemoteAttachmentDrafts ||
+        snapshot.any(
+          (draft) => draft.isImage && !draft.sanitized,
+        )) {
       throw const AttachmentDraftException(
-        'Legacy REST accepts exactly one sanitized image at most.',
+        'Legacy REST accepts up to 10 sanitized images and documents.',
       );
     }
-    if (snapshot.isNotEmpty && snapshot.single.byteLength > maxRestImageBytes) {
+    for (final draft in snapshot) {
+      if (!draft.isImage && draft.byteLength > maxRestFileBytes) {
+        throw const AttachmentDraftException(
+          'The selected file is too large to attach.',
+        );
+      }
+    }
+    final total = snapshot.fold<int>(0, (sum, draft) => sum + draft.byteLength);
+    if (total > maxRestTurnBytes) {
       throw const AttachmentDraftException(
-        'The sanitized image exceeds the legacy REST limit.',
+        'Attachments are limited to 16 MiB total per message.',
+      );
+    }
+    final imageTotal = snapshot
+        .where((draft) => draft.isImage)
+        .fold<int>(0, (sum, draft) => sum + draft.byteLength);
+    if (imageTotal > maxRestImageBytes) {
+      throw const AttachmentDraftException(
+        'The sanitized images exceed the legacy REST limit.',
       );
     }
   }
@@ -468,7 +539,7 @@ class AttachmentDraftService {
   void _ensureRemoteSlot(Iterable<AttachmentDraft> drafts) {
     if (drafts.length >= maxRemoteAttachmentDrafts) {
       throw const AttachmentDraftException(
-        'You can attach up to 10 items to one Remote Gateway draft.',
+        'You can attach up to 10 items to one message.',
       );
     }
   }

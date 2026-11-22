@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hermes_android/core/screens/settings_screen.dart';
 import 'package:hermes_android/core/services/connection_manager.dart';
+import 'package:hermes_android/core/services/one_signal_service.dart';
 import 'package:hermes_android/l10n/app_localizations.dart';
 import 'package:hermes_android/main.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -89,6 +91,90 @@ void main() {
   });
 
   group('every connection', () {
+    testWidgets('validates, persists and clears the OneSignal App ID', (
+      tester,
+    ) async {
+      const id = '12345678-abcd-1234-abcd-123456789abc';
+      await _openSettings(tester, _gatewayOnly());
+      await tester.scrollUntilVisible(
+        find.text(l10n.onesignal_app_id),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.drag(find.byType(Scrollable).first, const Offset(0, -300));
+      await _settle(tester);
+      await tester.tap(find.text(l10n.onesignal_app_id));
+      await _settle(tester);
+      await tester.enterText(find.byType(TextField).last, 'invalid');
+      await tester.tap(find.text(l10n.save).last);
+      await _settle(tester);
+      expect(find.text(l10n.onesignal_invalid_id), findsOneWidget);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString(OneSignalService.appIdKey), isNull);
+      await tester.enterText(find.byType(TextField).last, ' $id ');
+      await tester.tap(find.text(l10n.save).last);
+      await _settle(tester);
+      expect(prefs.getString(OneSignalService.appIdKey), id);
+      expect(find.text(l10n.onesignal_restart_required), findsWidgets);
+      await tester.tap(find.text(l10n.onesignal_app_id));
+      await _settle(tester);
+      expect(
+        tester.widget<TextField>(find.byType(TextField).last).controller!.text,
+        id,
+      );
+      await tester.enterText(find.byType(TextField).last, '');
+      await tester.tap(find.text(l10n.save).last);
+      await _settle(tester);
+      expect(prefs.getString(OneSignalService.appIdKey), isNull);
+    });
+
+    testWidgets('shows and copies only an available subscription ID', (
+      tester,
+    ) async {
+      final messenger = tester.binding.defaultBinaryMessenger;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('onesignal_setup_dialog_shown', true);
+      const channel = MethodChannel('OneSignal#pushsubscription');
+      String? copied;
+      OneSignalService.initialized = true;
+      messenger.setMockMethodCallHandler(channel, (call) async => null);
+      messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied = call.arguments['text'] as String;
+        }
+        return null;
+      });
+      addTearDown(() {
+        OneSignalService.initialized = false;
+        messenger.setMockMethodCallHandler(channel, null);
+        messenger.setMockMethodCallHandler(SystemChannels.platform, null);
+      });
+      await _openSettings(tester, _gatewayOnly());
+      await tester.scrollUntilVisible(
+        find.text(l10n.onesignal_subscription_id),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.text(l10n.onesignal_subscription_pending), findsOneWidget);
+      expect(find.byTooltip(l10n.onesignal_copy_id), findsNothing);
+      const codec = StandardMethodCodec();
+      await messenger.handlePlatformMessage(
+        'OneSignal#pushsubscription',
+        codec.encodeMethodCall(
+          const MethodCall('OneSignal#onPushSubscriptionChange', {
+            'current': {'id': 'server-id', 'optedIn': false},
+            'previous': {'id': null, 'optedIn': false},
+          }),
+        ),
+        (_) {},
+      );
+      await tester.pump();
+      expect(find.text('server-id'), findsOneWidget);
+      expect(copied, isNull);
+      await tester.tap(find.byTooltip(l10n.onesignal_copy_id));
+      expect(copied, 'server-id');
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
     testWidgets('has no "Session sources" section: nothing reads it', (
       tester,
     ) async {

@@ -1,4 +1,7 @@
 {
+  "notification_text_title": "알림",
+  "notification_text_may_be_truncated": "알림 텍스트가 잘렸을 수 있습니다.",
+  "notification_text_empty": "알림 텍스트가 없습니다.",
   "@@locale": "ko",
   "ai_full_text": "AI + 전문 검색",
   "ai_search_model": "AI 검색 모델",
@@ -648,5 +651,14 @@
   "pin_on_this_device": "이 기기에서 고정",
   "unpin_on_this_device": "이 기기에서 고정 해제",
   "pinned_on_this_device": "이 기기에서 고정됨",
-  "could_not_save_chat_pin": "이 기기에 채팅 고정을 저장할 수 없습니다"
+  "could_not_save_chat_pin": "이 기기에 채팅 고정을 저장할 수 없습니다",
+  "onesignal_app_id": "OneSignal App ID",
+  "onesignal_app_id_help": "App ID를 입력하세요(REST API 키가 아님). 비워 두면 빌드 기본값을 사용합니다. 저장 후 앱을 다시 시작하세요.",
+  "onesignal_invalid_id": "올바른 UUID를 입력하세요.",
+  "onesignal_restart_required": "OneSignal App ID를 적용하려면 앱을 다시 시작하세요.",
+  "onesignal_save_failed": "App ID를 저장하지 못했습니다. 다시 시도하세요.",
+  "onesignal_subscription_id": "OneSignal Subscription ID",
+  "onesignal_subscription_pending": "아직 사용할 수 없습니다. App ID를 설정하고 앱을 다시 시작하세요. 등록에 시간이 걸릴 수 있습니다.",
+  "onesignal_subscription_error": "Subscription ID를 읽지 못했습니다.",
+  "onesignal_copy_id": "Subscription ID 복사"
 }

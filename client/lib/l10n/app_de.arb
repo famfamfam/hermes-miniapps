@@ -1,4 +1,7 @@
 {
+  "notification_text_title": "Benachrichtigung",
+  "notification_text_may_be_truncated": "Der Benachrichtigungstext kann gekürzt sein.",
+  "notification_text_empty": "Kein Benachrichtigungstext.",
   "@@locale": "de",
   "ai_full_text": "KI + Volltext",
   "ai_search_model": "KI-Suchmodell",
@@ -648,5 +651,14 @@
   "pin_on_this_device": "Auf diesem Gerät anheften",
   "unpin_on_this_device": "Auf diesem Gerät lösen",
   "pinned_on_this_device": "Auf diesem Gerät angeheftet",
-  "could_not_save_chat_pin": "Chat konnte auf diesem Gerät nicht angeheftet werden"
+  "could_not_save_chat_pin": "Chat konnte auf diesem Gerät nicht angeheftet werden",
+  "onesignal_app_id": "OneSignal App ID",
+  "onesignal_app_id_help": "App ID eingeben (kein REST API Key). Leer lassen für den Build-Standard. App nach dem Speichern neu starten.",
+  "onesignal_invalid_id": "Gültige UUID eingeben.",
+  "onesignal_restart_required": "App neu starten, um die OneSignal App ID anzuwenden.",
+  "onesignal_save_failed": "App ID konnte nicht gespeichert werden. Erneut versuchen.",
+  "onesignal_subscription_id": "OneSignal Subscription ID",
+  "onesignal_subscription_pending": "Noch nicht verfügbar. App ID eingeben und App neu starten; die Registrierung kann dauern.",
+  "onesignal_subscription_error": "Subscription ID konnte nicht gelesen werden.",
+  "onesignal_copy_id": "Subscription ID kopieren"
 }

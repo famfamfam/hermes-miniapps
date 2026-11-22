@@ -4,6 +4,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
@@ -22,6 +23,7 @@ import '../services/desktop_gateway_client.dart';
 import '../services/gateway_turn_application_controller.dart';
 import '../services/gateway_turn_coordinator.dart';
 import '../services/gateway_turn_recovery.dart';
+import '../services/sent_attachment_cache.dart';
 import '../services/gateway_turn_ui_projection.dart';
 import '../services/remote_files_client.dart';
 import '../services/turn_notification_service.dart';
@@ -80,6 +82,23 @@ bool shouldEstablishLegacyDesktopSession(
   required bool legacyTransportFallback,
 }) => !session.isLocalDraft || legacyTransportFallback;
 
+/// True when the server's text-only projection of a user message matches the
+/// text of a locally sent multimodal message: Hermes stores image parts as
+/// `[screenshot]` lines and document parts as `@file <path>` lines, so the
+/// remainder must equal the sent text exactly.
+@visibleForTesting
+bool isScreenshotProjection(String serverContent, String sentText) {
+  final remainder = serverContent
+      .split('\n')
+      .where(
+        (line) =>
+            line.trim() != '[screenshot]' && !line.trim().startsWith('@file '),
+      )
+      .join('\n')
+      .trim();
+  return remainder == sentText.trim();
+}
+
 class _ModelChoice {
   final String provider;
   final String model;
@@ -115,6 +134,7 @@ String _reasoningEffortLabel(BuildContext context, String effort) {
     'xhigh' => context.l10n.extra_high,
     'max' => context.l10n.reasoning_max,
     'ultra' => context.l10n.reasoning_ultra,
+    'default' => context.l10n.profile_default,
     _ => effort,
   };
 }
@@ -377,6 +397,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   int _composerRevision = 0;
   final _imagePicker = ImagePicker();
   final List<AttachmentDraft> _attachmentDrafts = [];
+  bool _preparingAttachments = false;
   String? _sessionModel;
   String? _sessionProvider;
   String? _sessionReasoningEffort;
@@ -546,7 +567,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       _savedGatewayNotices[_gatewayNoticeIdentity] ?? const [],
     );
     _chatModelStore = ChatModelOverrideStore.open();
-    _sessionModelRestore = _restoreSessionModelOverride();
     final hasDashboardAuth =
         widget.connection.dashboardProxied ||
         (widget.connection.dashboardUsername?.trim().isNotEmpty == true &&
@@ -567,6 +587,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         _desktopGateway = null;
       }
     }
+    _sessionModelRestore = _restoreSessionModelOverride();
     // Test seam: with no real gateway, hand the same handler to the test
     // hook so it can simulate reconnect transitions.
     widget.testDesktopConnectionHook?.handler = _onDesktopConnectionChanged;
@@ -592,7 +613,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     unawaited(_initializeChat());
     _loadVerboseMode();
     _initVoice();
-    _recoverLostImage();
+    unawaited(_withAttachmentPreparation(_recoverLostImage));
     _scrollController.addListener(_onScroll);
   }
 
@@ -665,7 +686,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     setState(() {
       _sessionModel = override.model;
       _sessionProvider = override.provider;
-      _sessionReasoningEffort = override.reasoningEffort;
+      _sessionReasoningEffort = _desktopGateway == null
+          ? override.apiReasoningEffort
+          : override.reasoningEffort;
       _sessionModelOverride = true;
     });
   }
@@ -676,12 +699,19 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   Future<void> _sendInitialTextWhenReady() async {
     for (
       var waited = 0;
-      waited < 100 && mounted && _transcriptLoadBlocksComposer;
+      waited < 100 && mounted &&
+          (_transcriptLoadBlocksComposer || _preparingAttachments);
       waited++
     ) {
       await Future<void>.delayed(const Duration(milliseconds: 100));
     }
-    if (!mounted || _transcriptLoadBlocksComposer) return;
+    if (!mounted || _transcriptLoadBlocksComposer || _preparingAttachments) return;
+    final initialDrafts = [
+      ...widget.initialAttachmentDrafts,
+      ...widget.testInitialAttachmentDrafts,
+    ];
+    if (_textController.text != widget.initialComposerText ||
+        !listEquals(_attachmentDrafts, initialDrafts)) return;
     await _sendMessage();
   }
 
@@ -1368,6 +1398,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         return;
       }
       _extractToolMessages(messages);
+      await _applyCachedAttachments(messages);
       final completedPendingReattach =
           _pendingReattachResync &&
           _hasTerminalAssistantAfterWatermark(messages);
@@ -1411,6 +1442,49 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   Future<List<Map<String, dynamic>>> _getRecentMessages(String sessionId) =>
       _client.getMessages(sessionId, limit: _historyPageSize, latest: true);
 
+  /// Restores this chat's locally cached attachment payloads onto history
+  /// messages whose server-side content is only a text projection. Matches a
+  /// cached turn to a message by text (the one thing the projection keeps).
+  Future<void> _applyCachedAttachments(
+    List<Map<String, dynamic>> messages,
+  ) async {
+    try {
+      final turns = await SentAttachmentCache.readAll(
+        widget.connection.id,
+        widget.session.id,
+      );
+      if (turns.isEmpty) return;
+      for (final message in messages) {
+        if (message['role'] != 'user' || message['content'] is! String) {
+          continue;
+        }
+        final serverText = (message['content'] as String).trim();
+        for (final turn in turns.reversed) {
+          if (!isScreenshotProjection(serverText, turn.text)) continue;
+          message['content'] = [
+            if (turn.text.isNotEmpty) {'type': 'text', 'text': turn.text},
+            for (final url in turn.imageDataUrls)
+              {
+                'type': 'image_url',
+                'image_url': {'url': url},
+              },
+            for (final file in turn.files)
+              {
+                'type': 'file',
+                'file': {
+                  'filename': file['filename'],
+                  'file_data': file['fileData'],
+                },
+              },
+          ];
+          break;
+        }
+      }
+    } catch (_) {
+      // Cache is additive: a failed restore must not break the transcript.
+    }
+  }
+
   /// A remote turn may start while the initial bounded transcript request is
   /// still in flight. Its stale response must not overwrite optimistic or
   /// streamed messages, but dropping it permanently would leave the existing
@@ -1448,6 +1522,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         return;
       }
       _extractToolMessages(messages);
+      await _applyCachedAttachments(messages);
       setState(() {
         _messages = messages;
         _historyGeneration += 1;
@@ -1643,6 +1718,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       final messages = await _getRecentMessages(_storedSessionKey);
       if (!_canRunReattachResync || generation != _reattachGeneration) return;
       _extractToolMessages(messages);
+      await _applyCachedAttachments(messages);
       final completed = _hasTerminalAssistantAfterWatermark(messages);
       setState(() {
         _messages = messages;
@@ -1693,6 +1769,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       final messages = await _getRecentMessages(widget.session.id);
       if (!mounted || _appInBackground) return;
       _extractToolMessages(messages);
+      await _applyCachedAttachments(messages);
       setState(() {
         _messages = messages;
         _legacyHistoryResyncPending = false;
@@ -1910,13 +1987,21 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _showAttachmentPicker() async {
-    if (_transcriptLoadBlocksComposer ||
-        _streaming ||
-        _sending ||
-        _pendingReattachResync) {
-      return;
+  Future<void> _withAttachmentPreparation(Future<void> Function() action) async {
+    if (_preparingAttachments) return;
+    setState(() => _preparingAttachments = true);
+    try {
+      await action();
+    } finally {
+      if (mounted) setState(() => _preparingAttachments = false);
     }
+  }
+
+  bool get _attachmentActionsLocked =>
+      _sending || _streaming || _preparingAttachments || _pendingReattachResync;
+
+  Future<void> _showAttachmentPicker() async {
+    if (_transcriptLoadBlocksComposer || _attachmentActionsLocked) return;
 
     await showModalBottomSheet<void>(
       context: context,
@@ -1926,14 +2011,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           children: [
             ListTile(
               leading: const Icon(Icons.photo_library_outlined),
-              title: Text(
-                _desktopGateway == null
-                    ? context.l10n.choose_image
-                    : context.l10n.choose_images,
-              ),
+              title: Text(context.l10n.choose_images),
               onTap: () {
                 Navigator.pop(sheetContext);
-                _pickGalleryImages();
+                unawaited(_withAttachmentPreparation(_pickGalleryImages));
               },
             ),
             ListTile(
@@ -1941,7 +2022,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               title: Text(context.l10n.take_photo),
               onTap: () {
                 Navigator.pop(sheetContext);
-                _pickCameraImage();
+                unawaited(_withAttachmentPreparation(_pickCameraImage));
               },
             ),
             ListTile(
@@ -1962,7 +2043,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 ),
                 onTap: () {
                   Navigator.pop(sheetContext);
-                  _pickFiles();
+                  unawaited(_withAttachmentPreparation(_pickFiles));
                 },
               ),
           ],
@@ -2005,25 +2086,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   Future<void> _pickGalleryImages() async {
     try {
-      final mode = _desktopGateway == null
-          ? AttachmentDraftMode.rest
-          : AttachmentDraftMode.remoteGateway;
-      if (!allowsMultipleImageSelection(mode)) {
-        final image = await _imagePicker.pickImage(
-          source: ImageSource.gallery,
-          imageQuality: 75,
-          maxWidth: 1600,
-          maxHeight: 1600,
-        );
-        if (image != null) await _preparePickedImages([image]);
-        return;
-      }
       final images = await _imagePicker.pickMultiImage(
         imageQuality: 75,
         maxWidth: 1600,
         maxHeight: 1600,
       );
-      if (images.isNotEmpty) await _preparePickedImages(images);
+      if (mounted && images.isNotEmpty) await _preparePickedImages(images);
     } catch (_) {
       if (!mounted) return;
       _showAttachmentError(
@@ -2040,7 +2108,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         maxWidth: 1600,
         maxHeight: 1600,
       );
-      if (image != null) await _preparePickedImages([image]);
+      if (mounted && image != null) await _preparePickedImages([image]);
     } catch (_) {
       if (!mounted) return;
       _showAttachmentError(
@@ -2062,7 +2130,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       return;
     }
 
-    await _preparePickedImages(_desktopGateway == null ? [files.first] : files);
+    if (!mounted) return;
+    await _preparePickedImages(files);
   }
 
   Future<void> _preparePickedImages(List<XFile> images) async {
@@ -2075,15 +2144,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         final draft = await _attachmentDraftService.prepareImage(
           sourcePath: image.path,
           displayName: image.name,
-          existingDrafts: isRemote
-              ? [..._attachmentDrafts, ...prepared]
-              : const <AttachmentDraft>[],
+          existingDrafts: [..._attachmentDrafts, ...prepared],
           mode: isRemote
               ? AttachmentDraftMode.remoteGateway
               : AttachmentDraftMode.rest,
         );
         prepared.add(draft);
-        if (!isRemote) break;
       } on AttachmentDraftException catch (error) {
         errors.add(error.message);
       } catch (_) {
@@ -2095,17 +2161,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       return;
     }
     if (prepared.isNotEmpty) {
-      if (isRemote) {
-        setState(() => _attachmentDrafts.addAll(prepared));
-      } else {
-        final replaced = List<AttachmentDraft>.from(_attachmentDrafts);
-        setState(() {
-          _attachmentDrafts
-            ..clear()
-            ..add(prepared.single);
-        });
-        unawaited(_attachmentDraftService.removeAll(replaced));
-      }
+      setState(() => _attachmentDrafts.addAll(prepared));
     }
     if (errors.isNotEmpty) {
       _showAttachmentError(errors.first);
@@ -2113,20 +2169,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _pickFiles() async {
-    if (_desktopGateway == null) {
-      _showAttachmentError(
-        context
-            .l10n
-            .configure_a_valid_desktop_gateway_url_before_attaching_files,
-      );
-      return;
-    }
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.any,
         allowMultiple: true,
         withData: false,
       );
+      if (!mounted) return;
       final files = result?.files ?? const [];
       if (files.isEmpty) return;
       final available = maxRemoteAttachmentDrafts - _attachmentDrafts.length;
@@ -2151,6 +2200,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               sourcePath: path,
               displayName: file.name,
               existingDrafts: [..._attachmentDrafts, ...prepared],
+              mode: _desktopGateway == null
+                  ? AttachmentDraftMode.rest
+                  : AttachmentDraftMode.remoteGateway,
             ),
           );
         } catch (_) {
@@ -2182,14 +2234,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _removeAttachment(AttachmentDraft draft) async {
+    if (_attachmentActionsLocked || !_attachmentDrafts.contains(draft)) return;
+    setState(() => _attachmentDrafts.remove(draft));
     await _attachmentDraftService.removeCachedFile(draft);
-    if (!mounted) return;
-    setState(
-      () => _attachmentDrafts.removeWhere((item) => item.id == draft.id),
-    );
   }
 
   void _moveAttachment(AttachmentDraft draft, int offset) {
+    if (_attachmentActionsLocked) return;
     final index = _attachmentDrafts.indexOf(draft);
     setState(() {
       _attachmentDraftService.moveDraft(
@@ -2219,9 +2270,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   Future<void> _retryAttachment(AttachmentDraft draft) async {
     final desktopGateway = _desktopGateway;
     if (desktopGateway == null ||
-        _sending ||
-        _streaming ||
-        _pendingReattachResync) {
+        _attachmentActionsLocked ||
+        !_attachmentDrafts.contains(draft)) {
       return;
     }
     setState(() {
@@ -2314,9 +2364,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         );
       }
 
-      var currentEffort =
-          _sessionReasoningEffort ??
-          WsClient.normalizeReasoningEffort(modelInfo['reasoning_effort']);
+      var currentEffort = desktopGateway == null
+          ? (_sessionReasoningEffort ?? 'default')
+          : (_sessionReasoningEffort ??
+                WsClient.normalizeReasoningEffort(modelInfo['reasoning_effort']));
       try {
         if (desktopGateway != null) {
           currentEffort = await desktopGateway.getSessionReasoning(
@@ -2390,7 +2441,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                         child: DropdownButton<String>(
                           isExpanded: true,
                           value: selectedEffort,
-                          items: _reasoningEffortOptions
+                          items: [
+                            if (desktopGateway == null) 'default',
+                            ..._reasoningEffortOptions,
+                          ]
                               .map(
                                 (effort) => DropdownMenuItem(
                                   value: effort,
@@ -2553,13 +2607,15 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           effort: selection.reasoningEffort,
         );
       } else {
-        // The API Server owns this session, so persist the same per-session
-        // lock over :8642 instead of activating the Dashboard transport.
-        // Reasoning effort remains a Desktop Gateway-only control.
+        // Persist the override for native session clients too; REST turns also
+        // carry it because /v1/chat/completions does not read the model lock.
         await _client.setSessionModel(
           sessionId: widget.session.id,
           provider: choice.provider,
           model: choice.model,
+          reasoningEffort: selection.reasoningEffort == 'default'
+              ? null
+              : selection.reasoningEffort,
           createSessionIfMissing: widget.session.isLocalDraft,
         );
       }
@@ -2569,13 +2625,21 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         sessionId: widget.session.id,
         provider: choice.provider,
         model: choice.model,
-        reasoningEffort: selection.reasoningEffort,
+        reasoningEffort: desktopGateway != null
+            ? selection.reasoningEffort
+            : null,
+        apiReasoningEffort:
+            desktopGateway == null && selection.reasoningEffort != 'default'
+            ? selection.reasoningEffort
+            : null,
       );
       if (!mounted) return;
       setState(() {
         _sessionModel = choice.model;
         _sessionProvider = choice.provider;
-        _sessionReasoningEffort = selection.reasoningEffort;
+        _sessionReasoningEffort = selection.reasoningEffort == 'default'
+            ? null
+            : selection.reasoningEffort;
         _sessionModelOverride = true;
       });
       ScaffoldMessenger.of(context).showSnackBar(
@@ -2600,10 +2664,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   /// Send message via SSE streaming (Gateway API Server).
   Future<void> _sendMessage({bool speakResponse = false}) async {
-    if (_voiceComposer.listening) return;
-    final text = _textController.text.trim();
-    final attachments = List<AttachmentDraft>.from(_attachmentDrafts);
-    if (text.isEmpty && attachments.isEmpty) return;
+    if (_voiceComposer.listening || _preparingAttachments) return;
+    if (_textController.text.trim().isEmpty && _attachmentDrafts.isEmpty) return;
     if (_sending || _streaming || _pendingReattachResync) return;
     if (_transcriptLoadBlocksComposer) return;
     if (_loading || _error != null) {
@@ -2614,8 +2676,20 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         _error = null;
       });
     }
-    await _sessionModelRestore;
-    if (!mounted) return;
+    final composerText = _textController.text;
+    final attachments = List<AttachmentDraft>.from(_attachmentDrafts);
+    setState(() => _sending = true);
+    try {
+      await _sessionModelRestore;
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+    if (!mounted || _preparingAttachments || _streaming ||
+        _pendingReattachResync || _voiceComposer.listening ||
+        _textController.text != composerText ||
+        !listEquals(attachments, _attachmentDrafts)) return;
+    final text = composerText.trim();
+    if (text.isEmpty && attachments.isEmpty) return;
 
     // A remote-gateway profile uses one transport for every prompt. Images and
     // arbitrary files are both attached with the official `file.attach` RPC.
@@ -2642,12 +2716,22 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       _showAttachmentError(error.message);
       return;
     }
-    final pendingImage = attachments.firstOrNull;
-    String? imageDataUrl;
-    if (pendingImage != null) {
+    final imageDataUrls = <String>[];
+    final fileAttachments = <Map<String, String>>[];
+    if (attachments.isNotEmpty) {
       setState(() => _sending = true);
       try {
-        imageDataUrl = await _attachmentDraftService.readDataUrl(pendingImage);
+        for (final attachment in attachments) {
+          final dataUrl = await _attachmentDraftService.readDataUrl(attachment);
+          if (attachment.isImage) {
+            imageDataUrls.add(dataUrl);
+          } else {
+            fileAttachments.add({
+              'filename': attachment.name,
+              'fileData': dataUrl,
+            });
+          }
+        }
       } catch (_) {
         if (mounted) setState(() => _sending = false);
         if (!mounted) return;
@@ -2659,17 +2743,42 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       if (!mounted) return;
     }
 
-    final localContent = pendingImage == null
+    final localContent = imageDataUrls.isEmpty && fileAttachments.isEmpty
         ? text
         : <Map<String, dynamic>>[
             if (text.isNotEmpty) {'type': 'text', 'text': text},
-            {
-              'type': 'image_url',
-              'image_url': {'url': imageDataUrl},
-            },
+            for (final url in imageDataUrls)
+              {
+                'type': 'image_url',
+                'image_url': {'url': url},
+              },
+            for (final file in fileAttachments)
+              {
+                'type': 'file',
+                'file': {
+                  'filename': file['filename'],
+                  'file_data': file['fileData'],
+                },
+              },
           ];
 
     _clearComposerForSend();
+    // The server stores this turn's binary parts only as text projections,
+    // so keep the real payloads device-local for the chat's lifetime.
+    if (imageDataUrls.isNotEmpty || fileAttachments.isNotEmpty) {
+      unawaited(
+        SentAttachmentCache.append(
+          widget.connection.id,
+          widget.session.id,
+          CachedSentAttachments(
+            savedAtMs: DateTime.now().millisecondsSinceEpoch,
+            text: text,
+            imageDataUrls: imageDataUrls,
+            files: fileAttachments,
+          ),
+        ),
+      );
+    }
     _awaitingVoiceReply = speakResponse && _voiceReplyEnabled;
     final responseGeneration = ++_responseGeneration;
     _activeResponseTransport = _ResponseTransport.rest;
@@ -2686,6 +2795,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         kind: 'starting',
         text: context.l10n.starting_hermes,
       );
+      _attachmentDrafts.clear();
       _messages.add({'role': 'user', 'content': localContent});
       // Insert a placeholder streaming message
       _messages.add({
@@ -2697,6 +2807,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
     _scheduleStreamingFollow();
 
+    var draftsRestored = false;
     // Accumulate tokens into the streaming placeholder
     await _gateway.sendMessageStreaming(
       message: text,
@@ -2709,8 +2820,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       provider: _desktopGateway == null && _sessionModelOverride
           ? _sessionProvider
           : null,
+      reasoningEffort: _desktopGateway == null ? _sessionReasoningEffort : null,
       history: history,
-      imageDataUrl: imageDataUrl,
+      imageDataUrls: imageDataUrls,
+      fileAttachments: fileAttachments,
       onToken: (token) {
         if (!mounted || responseGeneration != _responseGeneration) return;
         setState(() {
@@ -2750,18 +2863,21 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         try {
           final messages = await _getRecentMessages(widget.session.id);
           if (!mounted || responseGeneration != _responseGeneration) return;
-          _extractToolMessages(messages);
-          if (pendingImage != null) {
-            await _attachmentDraftService.removeCachedFile(pendingImage);
+          // Hermes persists user images as a "[screenshot]" text projection
+          // (session_persistence): keep the rich local content for this
+          // turn's message so the photos stay visible in the chat.
+          for (var i = messages.length - 1; i >= 0; i--) {
+            final m = messages[i];
+            if (m['role'] != 'user') continue;
+            if (m['content'] is String &&
+                isScreenshotProjection(m['content'] as String, text)) {
+              m['content'] = localContent;
+            }
+            break;
           }
-          if (!mounted || responseGeneration != _responseGeneration) return;
+          _extractToolMessages(messages);
           setState(() {
             _messages = messages;
-            if (pendingImage != null) {
-              _attachmentDrafts.removeWhere(
-                (draft) => draft.id == pendingImage.id,
-              );
-            }
             _streaming = false;
             _sending = false;
             _gatewayTurnStatus = null;
@@ -2799,9 +2915,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       onError: (error) {
         _dismissStreamApproval();
         if (!mounted || responseGeneration != _responseGeneration) return;
-        // No streamed content means the request never reached the server
-        // (connection failure, non-200): restore the draft so nothing typed
-        // is lost. Content already flowing means the prompt was accepted.
+        // Offer the draft back if the reply never started. Once content
+        // flows, keep the accepted user message instead of offering a resend.
         final hadContent =
             _messages.isNotEmpty &&
             _messages.last['role'] == 'assistant' &&
@@ -2812,10 +2927,18 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             _messages.removeLast();
           }
         });
-        if (!hadContent) _restoreComposerAfterRejectedSend(text);
-        _handleSendError(error, removePendingUserMessage: true);
+        if (!hadContent) {
+          _attachmentDrafts.addAll(attachments);
+          draftsRestored = true;
+          _restoreComposerAfterRejectedSend(text);
+        }
+        _handleSendError(error, removePendingUserMessage: !hadContent);
       },
-    );
+    ).whenComplete(() async {
+      if (!draftsRestored && attachments.isNotEmpty) {
+        await _attachmentDraftService.removeAll(attachments);
+      }
+    });
   }
 
   Future<void> _sendDesktopGatewayMessage({
@@ -4690,6 +4813,25 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                         ),
                       ),
                     ),
+                    if (_preparingAttachments)
+                      Semantics(
+                        liveRegion: true,
+                        child: Padding(
+                          padding: const EdgeInsets.all(8),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(context.l10n.preparing_attachments),
+                            ],
+                          ),
+                        ),
+                      ),
                     if (_attachmentDrafts.isNotEmpty)
                       Container(
                         width: double.infinity,
@@ -4711,27 +4853,20 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                             child: ListView.builder(
                               shrinkWrap: true,
                               itemCount: _attachmentDrafts.length,
-                              itemBuilder: (context, index) =>
-                                  AttachmentDraftTile(
-                                    draft: _attachmentDrafts[index],
-                                    index: index,
-                                    total: _attachmentDrafts.length,
-                                    busy: _sending,
-                                    onMovePrevious: () => _moveAttachment(
-                                      _attachmentDrafts[index],
-                                      -1,
-                                    ),
-                                    onMoveNext: () => _moveAttachment(
-                                      _attachmentDrafts[index],
-                                      1,
-                                    ),
-                                    onRetry: () => _retryAttachment(
-                                      _attachmentDrafts[index],
-                                    ),
-                                    onRemove: () => _removeAttachment(
-                                      _attachmentDrafts[index],
-                                    ),
-                                  ),
+                              itemBuilder: (context, index) {
+                                final draft = _attachmentDrafts[index];
+                                return AttachmentDraftTile(
+                                  draft: draft,
+                                  index: index,
+                                  total: _attachmentDrafts.length,
+                                  busy: _attachmentActionsLocked,
+                                  onMovePrevious: () =>
+                                      _moveAttachment(draft, -1),
+                                  onMoveNext: () => _moveAttachment(draft, 1),
+                                  onRetry: () => _retryAttachment(draft),
+                                  onRemove: () => _removeAttachment(draft),
+                                );
+                              },
                             ),
                           ),
                         ),
@@ -4769,19 +4904,15 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                           button: true,
                           enabled:
                               !_transcriptLoadBlocksComposer &&
-                              !_streaming &&
-                              !_sending &&
-                              !_pendingReattachResync,
+                              !_attachmentActionsLocked,
                           excludeSemantics: true,
                           child: IconButton(
                             icon: const Icon(Icons.attach_file),
                             onPressed:
-                                (!_transcriptLoadBlocksComposer &&
-                                    !_streaming &&
-                                    !_sending &&
-                                    !_pendingReattachResync)
-                                ? _showAttachmentPicker
-                                : null,
+                                _transcriptLoadBlocksComposer ||
+                                    _attachmentActionsLocked
+                                ? null
+                                : _showAttachmentPicker,
                             tooltip: context.l10n.attach_image_or_file,
                             constraints: const BoxConstraints.tightFor(
                               width: 44,
@@ -4836,6 +4967,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                   enabled:
                                       !_transcriptLoadBlocksComposer &&
                                       !_streaming &&
+                                      !_sending &&
                                       !_pendingReattachResync,
                                   onSubmitted: (_) => _sendMessage(),
                                 ),
@@ -4886,6 +5018,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                           _streaming ||
                           (!_transcriptLoadBlocksComposer &&
                               !_sending &&
+                              !_preparingAttachments &&
                               !_pendingReattachResync &&
                               !_voiceComposer.listening),
                       excludeSemantics: true,
@@ -4914,6 +5047,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                 onPressed:
                                     _transcriptLoadBlocksComposer ||
                                         _sending ||
+                                        _preparingAttachments ||
                                         _pendingReattachResync ||
                                         _voiceComposer.listening
                                     ? null
@@ -5014,13 +5148,26 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
             final msg = item as Map<String, dynamic>;
             final role = (msg['role'] as String?) ?? 'assistant';
+            final isUser = role == 'user';
+            final (imageUrls, imagePartsText) = messageImageParts(
+              msg['content'],
+            );
+            final fileAttachments = messageFileParts(msg['content']);
+            // The inline thumbnails and file cards already carry the binary
+            // parts; messageContentToText would only add "[Image]"/"[File]"
+            // fillers next to them.
             final content =
                 (msg['_display_content'] as String?) ??
-                stripToolResultText(messageContentToText(msg['content']));
-            final isUser = role == 'user';
+                stripToolResultText(
+                  imageUrls.isEmpty && fileAttachments.isEmpty
+                      ? messageContentToText(msg['content'])
+                      : imagePartsText,
+                );
 
             return MessageBubble(
               content: content,
+              imageUrls: imageUrls,
+              fileAttachments: fileAttachments,
               isUser: isUser,
               verbose: _verboseMode,
               metadata: msg,
@@ -5070,6 +5217,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
 class MessageBubble extends StatelessWidget {
   final String content;
+  final List<String> imageUrls;
+  final List<MessageFileAttachment> fileAttachments;
   final bool isUser;
   final bool verbose;
   final Map<String, dynamic> metadata;
@@ -5089,6 +5238,8 @@ class MessageBubble extends StatelessWidget {
     required this.content,
     required this.isUser,
     this.verbose = false,
+    this.imageUrls = const [],
+    this.fileAttachments = const [],
     this.metadata = const {},
     this.onReadAloud,
     this.onEdit,
@@ -5110,6 +5261,95 @@ class MessageBubble extends StatelessWidget {
           duration: Duration(seconds: 2),
         ),
       );
+  }
+
+  /// Full-screen viewer for an attached photo. The pixels only exist in the
+  /// message's data URL (the server stores a "[screenshot]" projection), so
+  /// the viewer decodes from memory with interactive zoom.
+  void _showImageViewer(BuildContext context, String dataUrl) {
+    final bytes = base64Decode(dataUrl.split(',').last);
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (dialogContext) => Scaffold(
+          backgroundColor: Colors.black,
+          appBar: AppBar(
+            backgroundColor: Colors.black,
+            foregroundColor: Colors.white,
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.save_alt),
+                tooltip: context.l10n.save,
+                onPressed: () => unawaited(_saveImage(context, bytes)),
+              ),
+            ],
+          ),
+          body: Center(
+            child: InteractiveViewer(
+              maxScale: 5,
+              child: Image.memory(bytes, fit: BoxFit.contain),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _saveImage(BuildContext context, List<int> bytes) async {
+    try {
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [
+            XFile.fromData(
+              Uint8List.fromList(bytes),
+              mimeType: 'image/png',
+            ),
+          ],
+        ),
+      );
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(context.l10n.unable_to_prepare_this_file_try_another_one),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    }
+  }
+
+  /// Hands a sent document to the system share sheet, which offers saving
+  /// and opening in a viewer. The bytes come from the message's own file part.
+  Future<void> _shareFile(BuildContext context, MessageFileAttachment file) async {
+    try {
+      final dataUrl = file.dataUrl;
+      final base64Part = dataUrl.contains(',')
+          ? dataUrl.split(',').last
+          : dataUrl;
+      final mimeMatch = RegExp(
+        r'data:([^;,]+)',
+      ).firstMatch(dataUrl);
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [
+            XFile.fromData(
+              base64Decode(base64Part),
+              mimeType: mimeMatch?.group(1) ?? 'application/octet-stream',
+              name: file.name,
+            ),
+          ],
+        ),
+      );
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(context.l10n.unable_to_prepare_this_file_try_another_one),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    }
   }
 
   /// Opens the message in a selection-enabled dialog so a single sentence can
@@ -5505,6 +5745,74 @@ class MessageBubble extends StatelessWidget {
                 ),
               ),
             ],
+            // Attached documents render as tappable cards; the bytes live in
+            // the message's own file parts (the server keeps only an
+            // `@file <path>` text reference).
+            if (fileAttachments.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    for (final file in fileAttachments)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: InkWell(
+                          onTap: () => unawaited(_shareFile(context, file)),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.insert_drive_file_outlined),
+                              const SizedBox(width: 8),
+                              Flexible(
+                                child: Text(
+                                  file.name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: isUser
+                                        ? hermesUserMessageForeground
+                                        : assistantTextColor,
+                                    decoration: TextDecoration.underline,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            // Attached photos render inline; Hermes stores only a
+            // "[screenshot]" text projection server-side, so this is the only
+            // place the real pixels exist.
+            if (imageUrls.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final url in imageUrls)
+                      GestureDetector(
+                        onTap: () => _showImageViewer(context, url),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: SizedBox(
+                            width: 160,
+                            height: 160,
+                            child: Image.memory(
+                              base64Decode(url.split(',').last),
+                              fit: BoxFit.cover,
+                              gaplessPlayback: true,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             // Message content: assistant `MEDIA:` refs become file cards;
             // prose renders as markdown and fenced code blocks render with
             // language, copy, and wrap controls. User bubbles never parse

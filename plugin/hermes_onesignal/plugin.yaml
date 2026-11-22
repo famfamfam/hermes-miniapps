@@ -1,0 +1,16 @@
+name: onesignal
+label: OneSignal
+kind: platform
+version: 1.0.0
+description: Outbound push notifications to one profile-bound subscription
+optional_env:
+  - name: HERMES_ONESIGNAL_APP_ID
+    description: OneSignal app ID (alternative to the profile credentials file)
+  - name: HERMES_ONESIGNAL_API_KEY
+    description: OneSignal REST API key (server only)
+    password: true
+  - name: HERMES_ONESIGNAL_SUBSCRIPTION_ID
+    description: OneSignal subscription ID
+    password: true
+  - name: HERMES_ONESIGNAL_HOME_CHANNEL
+    description: Optional default target, must be phone

@@ -126,7 +126,11 @@ ou um endereço HTTPS com chave própria. Detalhes: [Hermes API server](https://
 
 ### 3. O aplicativo
 
-O jeito mais rápido é o APK assinado da página [Releases](https://github.com/famfamfam/hermes-miniapps/releases): abra-o no telefone (permita instalar a partir do navegador ou do gerenciador de arquivos) ou use `adb install -r`. Cada versão é assinada com a mesma chave do projeto, então cada uma instala por cima da anterior. Para compilar você mesmo:
+O jeito mais rápido é o APK assinado da página [Releases](https://github.com/famfamfam/hermes-miniapps/releases): abra-o no telefone (permita instalar a partir do navegador ou do gerenciador de arquivos) ou use `adb install -r`. Para atualizar um aplicativo instalado, o ID do pacote e a chave de assinatura devem ser os mesmos, e o número de build deve ser adequado.
+
+O release antigo com o pacote `dev.hermes.hermes_surfaces_example` e o aplicativo com o novo pacote `dev.hermes.hermes_surfaces` são instalados separadamente. Seus dados são isolados: os dados e a chave do dispositivo aprovador não são transferidos automaticamente. Não desinstale o aplicativo antigo até resolver a questão do acesso.
+
+Para compilar você mesmo:
 
 ```sh
 cd client
@@ -135,9 +139,9 @@ flutter build apk --release
 adb install -r build/app/outputs/flutter-apk/app-release.apk
 ```
 
-Sem um `client/key.properties`, o APK de release é assinado com a chave de depuração da sua máquina e instala como está.
+Sem um `client/key.properties`, o APK de release é assinado com a chave de depuração da sua máquina e não atualiza um aplicativo assinado com outra chave.
 Para assinar com a sua própria chave, crie `client/key.properties` com `storeFile`, `storePassword`, `keyAlias` e
-`keyPassword`. Uma atualização exige o mesmo id de aplicativo (`dev.hermes.hermes_surfaces_example`), a mesma chave e um
+`keyPassword`. Uma atualização exige o mesmo id de aplicativo (`dev.hermes.hermes_surfaces`), a mesma chave e um
 número de build maior (`--build-number`).
 
 ### 4. Alcançar o servidor pelo celular

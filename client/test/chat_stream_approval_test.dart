@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hermes_android/core/screens/chat_screen.dart';
 import 'package:hermes_android/core/services/connection_manager.dart';
@@ -176,8 +177,14 @@ Future<void> _wrapUp(WidgetTester tester, _Server server) async {
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() {
     SharedPreferences.setMockInitialValues({'verbose_mode': false});
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          const MethodChannel('plugins.flutter.io/image_picker'),
+          (_) async => null,
+        );
   });
 
   testWidgets('the dialog appears and "Allow once" answers over REST', (

@@ -945,12 +945,15 @@ class ApiClient {
     required String sessionId,
     required String provider,
     required String model,
+    String? reasoningEffort,
     bool createSessionIfMissing = false,
   }) async {
     final body = {
       'provider': provider,
       'model': model,
       'require_model_lock': true,
+      if (reasoningEffort != null)
+        'model_options': {'reasoning_effort': reasoningEffort},
     };
     if (createSessionIfMissing) {
       final response = await _http
@@ -1024,7 +1027,8 @@ class GatewayChatClient {
   static List<Map<String, dynamic>> buildChatCompletionMessages({
     required String message,
     List<Map<String, dynamic>>? history,
-    String? imageDataUrl,
+    List<String> imageDataUrls = const [],
+    List<Map<String, String>> fileAttachments = const [],
   }) {
     final messages = <Map<String, dynamic>>[];
     if (history != null && history.isNotEmpty) {
@@ -1041,21 +1045,32 @@ class GatewayChatClient {
     }
 
     final latest = message.trim();
-    final latestContent = imageDataUrl == null
+    final latestContent = imageDataUrls.isEmpty && fileAttachments.isEmpty
         ? latest
         : <Map<String, dynamic>>[
             if (latest.isNotEmpty) {'type': 'text', 'text': latest},
-            {
-              'type': 'image_url',
-              'image_url': {'url': imageDataUrl},
-            },
+            for (final url in imageDataUrls)
+              {
+                'type': 'image_url',
+                'image_url': {'url': url},
+              },
+            for (final file in fileAttachments)
+              {
+                'type': 'file',
+                'file': {
+                  'filename': file['filename'] ?? 'document',
+                  'file_data': file['fileData'] ?? '',
+                },
+              },
           ];
     final alreadyLast =
-        imageDataUrl == null &&
+        imageDataUrls.isEmpty &&
+        fileAttachments.isEmpty &&
         messages.isNotEmpty &&
         messages.last['role'] == 'user' &&
         messages.last['content'] == latest;
-    if ((latest.isNotEmpty || imageDataUrl != null) && !alreadyLast) {
+    if ((latest.isNotEmpty || imageDataUrls.isNotEmpty || fileAttachments.isNotEmpty) &&
+        !alreadyLast) {
       messages.add({'role': 'user', 'content': latestContent});
     }
     return messages;
@@ -1123,8 +1138,10 @@ class GatewayChatClient {
     required String sessionId,
     String? model,
     String? provider,
+    String? reasoningEffort,
     List<Map<String, dynamic>>? history,
-    String? imageDataUrl,
+    List<String> imageDataUrls = const [],
+    List<Map<String, String>> fileAttachments = const [],
     required void Function(String token) onToken,
     ToolProgressCallback? onToolProgress,
     required void Function() onDone,
@@ -1133,12 +1150,15 @@ class GatewayChatClient {
     final messages = buildChatCompletionMessages(
       message: message,
       history: history,
-      imageDataUrl: imageDataUrl,
+      imageDataUrls: imageDataUrls,
+      fileAttachments: fileAttachments,
     );
 
     final body = {
       'model': model ?? 'hermes-agent',
       if (provider?.trim().isNotEmpty == true) 'provider': provider!.trim(),
+      if (reasoningEffort != null)
+        'model_options': {'reasoning_effort': reasoningEffort},
       'messages': messages,
       'stream': true,
     };
@@ -1344,10 +1364,14 @@ class _LiveStream {
 /// matching a bare Exception.
 class DashboardHttpException implements Exception {
   final int statusCode;
-  const DashboardHttpException(this.statusCode);
+
+  /// Why the server refused, when it said so.
+  final String? message;
+  const DashboardHttpException(this.statusCode, [this.message]);
 
   @override
-  String toString() => 'HTTP $statusCode';
+  String toString() =>
+      message == null ? 'HTTP $statusCode' : 'HTTP $statusCode: $message';
 }
 
 /// Client for the Hermes Dashboard REST API.
@@ -1898,6 +1922,9 @@ class DashboardClient {
   );
 
   // ── Cron job management ──────────────────────────────────────────────
+
+  /// Whether a task can be switched to "script only" (`no_agent`) from here.
+  bool get canSetScriptOnly => true;
 
   Future<Map<String, dynamic>> createJob({
     required String prompt,
