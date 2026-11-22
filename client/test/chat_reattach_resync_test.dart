@@ -13,6 +13,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hermes_android/core/models/projects_tree_overview.dart';
 import 'package:hermes_android/core/screens/chat_screen.dart';
@@ -26,6 +27,14 @@ import 'support/fake_voice_composer_adapter.dart';
 import 'package:hermes_android/l10n/app_localizations.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  setUp(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(
+              const MethodChannel('plugins.flutter.io/image_picker'),
+              (_) async => null,
+            );
+  });
   setUp(() {
     SharedPreferences.setMockInitialValues({'verbose_mode': false});
   });

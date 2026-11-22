@@ -1,10 +1,10 @@
 // The hand-drawn wallpaper behind the chat: it draws, it has no seam where the tile repeats, it stays faint
 // (one group alpha), it never takes a tap, and the chat shows it unless the Settings switch is off.
 import 'dart:convert';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hermes_android/core/screens/chat_screen.dart';
@@ -89,6 +89,14 @@ int _minRed(_Pixels px) {
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  setUp(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(
+              const MethodChannel('plugins.flutter.io/image_picker'),
+              (_) async => null,
+            );
+  });
   setUp(() => SharedPreferences.setMockInitialValues({'verbose_mode': false}));
 
   group('the wallpaper', () {

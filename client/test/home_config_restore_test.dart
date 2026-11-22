@@ -86,6 +86,13 @@ Future<void> pumpHome(
 }
 
 void main() {
+  setUp(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(
+              const MethodChannel('plugins.flutter.io/image_picker'),
+              (_) async => null,
+            );
+  });
   late AppLocalizations l10n;
 
   setUpAll(() async {

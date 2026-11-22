@@ -4831,7 +4831,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                 child: CircularProgressIndicator(strokeWidth: 2),
                               ),
                               const SizedBox(width: 8),
-                              Text(context.l10n.preparing_attachments),
+                              Flexible(
+                                child: Text(context.l10n.preparing_attachments),
+                              ),
                             ],
                           ),
                         ),

@@ -17,6 +17,14 @@ import 'package:hermes_android/core/widgets/chat_end_affordance.dart';
 import 'package:hermes_android/l10n/app_localizations.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  setUp(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          const MethodChannel('plugins.flutter.io/image_picker'),
+          (_) async => null,
+        );
+  });
   setUp(() {
     SharedPreferences.setMockInitialValues({'verbose_mode': false});
   });
@@ -311,11 +319,11 @@ void main() {
       await tester.enterText(find.byType(TextField), 'pending recovery');
       await tester.pump();
       expect(
-        tester.widget<IconButton>(find.byTooltip('Attach image or file')).onPressed,
+        tester.widget<IconButton>(_iconButton('Attach image or file')).onPressed,
         isNull,
       );
-      expect(tester.widget<IconButton>(find.byTooltip('Send')).onPressed, isNull);
-      await tester.tap(find.byTooltip('Attach image or file'));
+      expect(tester.widget<IconButton>(_iconButton('Send')).onPressed, isNull);
+      await tester.tap(_iconButton('Attach image or file'));
       await tester.tap(find.byTooltip('Send'));
       await tester.testTextInput.receiveAction(TextInputAction.send);
       await tester.pump();
@@ -326,11 +334,11 @@ void main() {
       retrieveResult.complete();
       await tester.pumpAndSettle();
       expect(
-        tester.widget<IconButton>(find.byTooltip('Attach image or file')).onPressed,
+        tester.widget<IconButton>(_iconButton('Attach image or file')).onPressed,
         isNotNull,
       );
-      expect(tester.widget<IconButton>(find.byTooltip('Send')).onPressed, isNotNull);
-      await tester.tap(find.byTooltip('Attach image or file'));
+      expect(tester.widget<IconButton>(_iconButton('Send')).onPressed, isNotNull);
+      await tester.tap(_iconButton('Attach image or file'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Choose images'));
       await tester.pumpAndSettle();
@@ -462,7 +470,7 @@ void main() {
       expect(pickerStarted.isCompleted, isTrue);
       await tester.enterText(find.byType(TextField), 'pending selection');
       await tester.pump();
-      expect(tester.widget<IconButton>(find.byTooltip('Send')).onPressed, isNull);
+      expect(tester.widget<IconButton>(_iconButton('Send')).onPressed, isNull);
       await tester.tap(find.byTooltip('Send'));
       await tester.pump();
       expect(client.postStarted.isCompleted, isFalse);
@@ -470,7 +478,7 @@ void main() {
       pickerResult.complete([]);
       await tester.pumpAndSettle();
       expect(
-        tester.widget<IconButton>(find.byTooltip('Send')).onPressed,
+        tester.widget<IconButton>(_iconButton('Send')).onPressed,
         isNotNull,
       );
       await tester.tap(find.byTooltip('Send'));
@@ -507,14 +515,14 @@ void main() {
         attachmentDraftService: service,
         initialDrafts: [_fixtureDraft('sent-file')],
       );
-      final remove = find.byTooltip('Remove attachment');
+      final remove = _iconButton('Remove attachment');
       expect(tester.widget<IconButton>(remove).onPressed, isNotNull);
       await tester.tap(find.byTooltip('Send'));
       await tester.pump();
       expect(client.postStarted.isCompleted, isFalse);
       expect(tester.widget<IconButton>(remove).onPressed, isNull);
       expect(
-        tester.widget<IconButton>(find.byTooltip('Attach image or file')).onPressed,
+        tester.widget<IconButton>(_iconButton('Attach image or file')).onPressed,
         isNull,
       );
 
@@ -522,7 +530,12 @@ void main() {
       await tester.pump();
       expect(client.postStarted.isCompleted, isTrue);
       expect(find.bySemanticsLabel('Attachment drafts'), findsNothing);
+      client.emitToken('started');
+      await tester.pump();
       await tester.tap(find.byTooltip('Stop response'));
+      await tester.pump();
+      client.finish(const []);
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
       await tester.pump();
       expect(service.removedIds, ['sent-file']);
       expect(service.removalFinished, isFalse);
@@ -552,7 +565,7 @@ void main() {
       expect(client.postStarted.isCompleted, isTrue);
       expect(find.bySemanticsLabel('Attachment drafts'), findsOneWidget);
       expect(
-        tester.widget<IconButton>(find.byTooltip('Remove attachment')).onPressed,
+        tester.widget<IconButton>(_iconButton('Remove attachment')).onPressed,
         isNotNull,
       );
       expect(
@@ -834,6 +847,10 @@ void main() {
     );
   });
 }
+
+Finder _iconButton(String tooltip) => find.byWidgetPredicate(
+  (widget) => widget is IconButton && widget.tooltip == tooltip,
+);
 
 Future<void> _pumpChat(
   WidgetTester tester, {

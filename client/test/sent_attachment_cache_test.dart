@@ -6,8 +6,8 @@ void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   test('appends and reads turns for one chat', () async {
-    const turn = CachedSentAttachments(
-      savedAtMs: 1000,
+    final turn = CachedSentAttachments(
+      savedAtMs: DateTime.now().millisecondsSinceEpoch,
       text: 'see this',
       imageDataUrls: ['data:image/png;base64,QUJD'],
       files: [
@@ -38,8 +38,8 @@ void main() {
     await SentAttachmentCache.append(
       'c',
       's',
-      const CachedSentAttachments(
-        savedAtMs: 1000,
+      CachedSentAttachments(
+        savedAtMs: DateTime.now().millisecondsSinceEpoch,
         text: 'fresh',
         imageDataUrls: [],
         files: [],
@@ -49,12 +49,13 @@ void main() {
   });
 
   test('maxTurns bounds the cache and removeConnection clears all', () async {
+    final now = DateTime.now().millisecondsSinceEpoch;
     for (var i = 0; i < 55; i++) {
       await SentAttachmentCache.append(
         'c',
         's',
         CachedSentAttachments(
-          savedAtMs: 1000 + i,
+          savedAtMs: now + i,
           text: 'turn-$i',
           imageDataUrls: const [],
           files: const [],
@@ -77,8 +78,8 @@ void main() {
   });
 }
 
-CachedSentAttachments _freshTurn() => const CachedSentAttachments(
-  savedAtMs: 2000,
+CachedSentAttachments _freshTurn() => CachedSentAttachments(
+  savedAtMs: DateTime.now().millisecondsSinceEpoch,
   text: 'fresh',
   imageDataUrls: [],
   files: [],

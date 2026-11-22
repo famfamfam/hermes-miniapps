@@ -147,7 +147,7 @@ void main() {
       );
     });
 
-    test('REST accepts zero to ten sanitized images, but no other files', () {
+    test('REST accepts zero to ten sanitized images and bounded documents', () {
       final images = List.generate(
         10,
         (index) => fakeDraft(
@@ -173,6 +173,12 @@ void main() {
       expect(
         () => service.validateRestDrafts([
           fakeDraft(name: 'document.pdf', byteLength: 10),
+        ]),
+        returnsNormally,
+      );
+      expect(
+        () => service.validateRestDrafts([
+          fakeDraft(name: 'huge.pdf', byteLength: maxRestFileBytes + 1),
         ]),
         throwsA(isA<AttachmentDraftException>()),
       );
@@ -247,7 +253,7 @@ void main() {
       );
       final squeezed = await prepare([nearlyFull]);
       expect(squeezed.byteLength, lessThanOrEqualTo(4096));
-      expect(squeezed.mediaType, 'image/jpeg');
+      expect(squeezed.mediaType, 'image/png');
       final overflow = fakeDraft(
         name: 'existing-overflow.png',
         byteLength: exact.byteLength + 1,
